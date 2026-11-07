@@ -8,6 +8,7 @@ import { AppText, AppTile, Badge, Banner, HomeGrid, Screen } from '@/components'
 import { TeamBanner } from '@/components/comic/TeamBanner';
 import { useIsWide } from '@/features/team/notices';
 import { photoUrlOf } from '@/features/team/people';
+import { RatingPrompt } from '@/features/rating/RatingPrompt';
 import { PersonAvatar } from '@/features/team/PersonAvatar';
 import { useApi, useConfig, usePolling } from '@/hooks';
 import { confirm } from '@/lib/dialogs';
@@ -15,8 +16,8 @@ import { teamColorOf } from '@/lib/teamColor';
 import { colors, spacing } from '@/theme';
 
 async function loadSummary() {
-  const [order, report] = await Promise.all([api.order(), api.report()]);
-  return { order, report };
+  const [order, report, team] = await Promise.all([api.order(), api.report(), api.team()]);
+  return { order, report, memberCount: team.members.length };
 }
 
 export default function TeamHomeScreen() {
@@ -154,6 +155,9 @@ export default function TeamHomeScreen() {
       <HomeGrid>
         <AppTile label="Log out" icon="log-out" onPress={() => void onLogout()} />
       </HomeGrid>
+
+      {/* Once the team has its teammates, everyone in it is asked to rate the app. */}
+      <RatingPrompt ready={(summary.data?.memberCount ?? 0) >= 2 && !showWelcome} />
     </Screen>
   );
 }

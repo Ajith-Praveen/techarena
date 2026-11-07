@@ -3,6 +3,9 @@ import { Platform } from 'react-native';
 import type {
   AddMemberRequest,
   AddMemberResponse,
+  AdminRatingsResponse,
+  MyRatingResponse,
+  RateAppRequest,
   TeamColorsResponse,
   AdminJudgesResponse,
   AdminLoginRequest,
@@ -276,6 +279,10 @@ export const api = {
   setTeamColor: (color: string) => request<UpdateTeamResponse>('PUT', '/api/team/color', { body: { color } }),
   /** The colour palette with which colours other teams already use. */
   teamColors: () => request<TeamColorsResponse>('GET', '/api/team-colors', { auth: false }),
+  /** Your own app rating, or null if you have not rated yet. */
+  myRating: () => request<MyRatingResponse>('GET', '/api/rating'),
+  rateApp: (body: RateAppRequest) => request<MyRatingResponse>('PUT', '/api/rating', { body }),
+  adminRatings: () => request<AdminRatingsResponse>('GET', '/api/admin/ratings'),
   addMember: (body: AddMemberRequest) => request<AddMemberResponse>('POST', '/api/team/members', { body }),
   removeMember: (memberId: string) =>
     request<OkResponse>('DELETE', `/api/team/members/${enc(memberId)}`),

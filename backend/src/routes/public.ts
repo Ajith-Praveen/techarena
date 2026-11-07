@@ -35,6 +35,7 @@ app.get('/config', async (c) => {
     resultsPublished: state.resultsPublishedAt !== null,
     appUrl: c.env.APP_URL ?? '',
     apkUrl: c.env.APK_URL ?? '',
+    githubUrl: c.env.GITHUB_URL ?? '',
   });
 });
 

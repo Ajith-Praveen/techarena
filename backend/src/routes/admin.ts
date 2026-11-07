@@ -202,6 +202,33 @@ async function orderedPublicTeams(db: D1Database) {
   return teams.map((t) => toPublicTeam(t, people.get(t.id) ?? []));
 }
 
+/** Every app rating with who gave it (names only) and the average. */
+app.get('/ratings', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT r.stars, r.feedback, r.updated_at, r.subject_kind,
+            COALESCE(p.name, j.name) AS name, t.name AS team_name
+       FROM ratings r
+       LEFT JOIN participants p ON r.subject_kind = 'participant' AND p.id = r.subject_id
+       LEFT JOIN teams t ON t.id = p.team_id
+       LEFT JOIN judges j ON r.subject_kind = 'judge' AND j.id = r.subject_id
+      ORDER BY r.updated_at DESC`,
+  ).all<{ stars: number; feedback: string | null; updated_at: string; subject_kind: string; name: string | null; team_name: string | null }>();
+  const count = results.length;
+  const average = count ? Math.round((results.reduce((s, r) => s + r.stars, 0) / count) * 10) / 10 : null;
+  return c.json({
+    count,
+    average,
+    ratings: results.map((r) => ({
+      stars: r.stars,
+      feedback: r.feedback,
+      updatedAt: r.updated_at,
+      role: r.subject_kind === 'judge' ? 'judge' : 'team',
+      name: r.name ?? 'Removed user',
+      teamName: r.team_name,
+    })),
+  });
+});
+
 app.get('/judges', async (c) => {
   const db = c.env.DB;
   const { results } = await db

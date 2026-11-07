@@ -6,6 +6,7 @@ import adminRoutes from './routes/admin';
 import authRoutes from './routes/auth';
 import judgeRoutes from './routes/judge';
 import publicRoutes from './routes/public';
+import ratingRoutes from './routes/ratings';
 import resultsRoutes from './routes/results';
 import teamRoutes from './routes/team';
 
@@ -36,6 +37,7 @@ app.get('/techarena.apk', (c) => {
 app.route('/api', publicRoutes);
 app.route('/api', authRoutes);
 app.route('/api', resultsRoutes);
+app.route('/api', ratingRoutes);
 app.route('/api/team', teamRoutes);
 app.route('/api/judge', judgeRoutes);
 app.route('/api/admin', adminRoutes);

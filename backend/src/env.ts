@@ -9,6 +9,8 @@ export interface Env {
   MAX_TEAM_SIZE: string;
   APP_URL: string;
   APK_URL: string;
+  /** Public repo link for the "Star on GitHub" button. */
+  GITHUB_URL?: string;
   /** Where /techarena.apk forwards to (the Android build download). Empty = 404. */
   APK_DOWNLOAD_URL?: string;
   MAIL_FROM: string;

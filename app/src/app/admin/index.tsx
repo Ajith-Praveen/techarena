@@ -72,6 +72,7 @@ export default function AdminHomeScreen() {
           href="/admin/results"
           badge={evaluationsComplete && !data.resultsPublished ? true : undefined}
         />
+        <AppTile label="Ratings" icon="star" gradient="pink" href="/admin/ratings" />
       </HomeGrid>
 
       <RegistrationCard overview={data} onChanged={(registrationOpen) => {

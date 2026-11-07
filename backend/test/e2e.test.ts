@@ -1278,3 +1278,56 @@ describe('Tech Arena API (team colours and auto poster)', () => {
     assert.equal((await s.api('GET', up.body.team.posterUrl)).status, 404);
   });
 });
+
+describe('Tech Arena API (app ratings)', () => {
+  let s: TestServer;
+  before(async () => {
+    s = await startServer();
+  });
+  after(async () => {
+    await s.stop();
+  });
+
+  it('team members and judges rate the app once (updatable); the badge and admin list show it', async () => {
+    const empty = await s.api('GET', '/api/rating/badge');
+    assert.equal(empty.status, 200);
+    assert.deepEqual(empty.body, { schemaVersion: 1, label: 'app rating', message: 'no ratings yet', color: 'lightgrey' });
+
+    const lead = await s.api('POST', '/api/teams/register', { body: teamPayload({ teamName: 'Raters', phone: '9700000001' }) });
+    assert.equal(lead.status, 201);
+    const admin = (await s.api('POST', '/api/auth/admin-login', { body: { username: 'admin', password: ADMIN_PASSWORD } })).body.token;
+    await s.api('POST', '/api/admin/judges', { token: admin, body: { name: 'Prof. Rate', username: 'rate', password: 'judgepass' } });
+    const judge = (await s.api('POST', '/api/auth/judge-login', { body: { username: 'rate', password: 'judgepass' } })).body.token;
+
+    assertError(await s.api('GET', '/api/rating'), 401, 'UNAUTHORIZED');
+    assertError(await s.api('PUT', '/api/rating', { token: admin, body: { stars: 5 } }), 403, 'FORBIDDEN');
+    assert.deepEqual((await s.api('GET', '/api/rating', { token: lead.body.token })).body, { rating: null });
+    for (const bad of [0, 6, 4.5, '5', null]) {
+      assertError(await s.api('PUT', '/api/rating', { token: lead.body.token, body: { stars: bad } }), 400, 'VALIDATION');
+    }
+
+    const first = await s.api('PUT', '/api/rating', { token: lead.body.token, body: { stars: 3, feedback: '  Good, but slow on my phone  ' } });
+    assert.equal(first.status, 200, JSON.stringify(first.body));
+    assert.equal(first.body.rating.feedback, 'Good, but slow on my phone');
+    const changed = await s.api('PUT', '/api/rating', { token: lead.body.token, body: { stars: 4 } });
+    assert.equal(changed.body.rating.stars, 4);
+    assert.equal(changed.body.rating.feedback, null);
+    assert.equal((await s.api('GET', '/api/rating', { token: lead.body.token })).body.rating.stars, 4);
+    assert.equal((await s.api('PUT', '/api/rating', { token: judge, body: { stars: 5, feedback: 'Scoring was quick.' } })).status, 200);
+
+    const badge = await s.api('GET', '/api/rating/badge');
+    assert.equal(badge.body.message, '★ 4.5 / 5 · 2 ratings');
+    assert.equal(badge.body.color, 'brightgreen');
+
+    const list = await s.api('GET', '/api/admin/ratings', { token: admin });
+    assert.equal(list.status, 200);
+    assert.equal(list.body.count, 2);
+    assert.equal(list.body.average, 4.5);
+    const byRole = Object.fromEntries(list.body.ratings.map((r: any) => [r.role, r]));
+    assert.equal(byRole.team.name, 'Lead Person');
+    assert.equal(byRole.team.teamName, 'Raters');
+    assert.equal(byRole.judge.name, 'Prof. Rate');
+    assert.equal(byRole.judge.feedback, 'Scoring was quick.');
+    assertError(await s.api('GET', '/api/admin/ratings', { token: judge }), 403, 'FORBIDDEN');
+  });
+});

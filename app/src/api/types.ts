@@ -155,6 +155,8 @@ export interface AppConfig {
   resultsPublished: boolean;
   appUrl: string;
   apkUrl: string;
+  /** Public GitHub repo for the "Star on GitHub" button (may be empty). */
+  githubUrl?: string;
 }
 
 export interface RegisterRequest extends ImageUpload {
@@ -506,4 +508,33 @@ export interface LeaderboardResponse {
 export interface PosterUpload {
   posterBase64: string;
   posterMime: ImageMime;
+}
+
+// ---------- App ratings ----------
+
+export interface AppRating {
+  stars: number;
+  feedback: string | null;
+  updatedAt: string;
+}
+
+export interface MyRatingResponse {
+  rating: AppRating | null;
+}
+
+export interface RateAppRequest {
+  stars: number;
+  feedback?: string;
+}
+
+export interface AdminRating extends AppRating {
+  role: 'team' | 'judge';
+  name: string;
+  teamName: string | null;
+}
+
+export interface AdminRatingsResponse {
+  count: number;
+  average: number | null;
+  ratings: AdminRating[];
 }

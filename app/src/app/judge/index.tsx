@@ -8,6 +8,7 @@ import { api, ApiError } from '@/api/client';
 import { useAuth } from '@/auth/AuthContext';
 import { AppText, AppTile, Badge, Banner, Button, Card, ErrorView, HomeGrid, LoadingView, Screen } from '@/components';
 import { PersonAvatar } from '@/features/judge/PersonAvatar';
+import { RatingPrompt } from '@/features/rating/RatingPrompt';
 import { ProgressBar } from '@/features/judge/ProgressBar';
 import { nextUpFor, type JudgeProgress } from '@/features/judge/types';
 import { useApi, useConfig, usePolling } from '@/hooks';
@@ -203,6 +204,9 @@ export default function JudgeHomeScreen() {
         <AppTile label="Results" icon="trophy" gradient="gold" href="/judge/results" badge={data.resultsPublished ? true : undefined} />
         <AppTile label="Logout" icon="log-out" gradient="slate" onPress={onLogout} />
       </HomeGrid>
+
+      {/* Judges are asked to rate the app after their first submitted score. */}
+      <RatingPrompt ready={myDone >= 1} />
 
       {data.resultsPublished ? null : (
         <View style={styles.footerNote}>

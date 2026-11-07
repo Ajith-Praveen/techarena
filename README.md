@@ -1,6 +1,11 @@
 # Tech Arena
 
-Project expo app. Teams register and add teammates, the admin draws a random presentation order, judges score each team on an iPad by typing the team's 4-digit code, teams see their marks the moment a judge submits, and the judges publish the top 3 at the end.
+[![App rating](https://img.shields.io/endpoint?url=https%3A%2F%2Ftech-arena.gate-orbit-server.workers.dev%2Fapi%2Frating%2Fbadge&style=for-the-badge&logo=starship&logoColor=white)](https://tech-arena.gate-orbit-server.workers.dev)
+[![GitHub stars](https://img.shields.io/github/stars/Ajith-Praveen/techarena?style=for-the-badge&logo=github)](https://github.com/Ajith-Praveen/techarena/stargazers)
+
+Project expo app. Teams register and add teammates, the admin draws a random presentation order, judges score each team on an iPad by typing the team's 4-digit code, and the judges publish the top 3 at the end. Each team picks its own colour (no two teams share one) and gets an auto-generated comic poster. Marks stay sealed until the results are published.
+
+**Rating:** everyone who uses the app is asked to rate it (team members once their teammates are added, judges after their first score). The "App rating" badge above shows the live average from those ratings. If you liked it, please star the repo too ⭐
 
 - **Android**: APK built with EAS.
 - **iPhone**: install from Safari: open the app link, tap Share, then **Add to Home Screen**. It runs full screen like a normal app. No App Store needed.

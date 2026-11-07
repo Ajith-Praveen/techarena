@@ -25,6 +25,7 @@
     "MAX_TEAM_SIZE": "5",
     "APP_URL": "https://tech-arena.gate-orbit-server.workers.dev",
     "APK_URL": "",
+    "GITHUB_URL": "https://github.com/Ajith-Praveen/techarena",
     "APK_DOWNLOAD_URL": "https://expo.dev/artifacts/eas/qOIEZYIXwwvb-ubujc3w7-WUPWF-m5HNOu8ytBSncnc.apk",
     "MAIL_FROM": "Tech Arena <onboarding@resend.dev>"
   }
