@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tech-arena",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": "../app/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/techarena.apk"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tech-arena-db",
+      "database_id": "8625ddfc-05c4-4e5c-b8a9-0b73d3ac39e0",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "EVENT_NAME": "Tech Arena",
+    "ADMIN_USERNAME": "Admin",
+    "DEFAULT_COUNTRY_CODE": "91",
+    "MAX_TEAM_SIZE": "5",
+    "APP_URL": "https://tech-arena.gate-orbit-server.workers.dev",
+    "APK_URL": "",
+    "APK_DOWNLOAD_URL": "https://expo.dev/artifacts/eas/qOIEZYIXwwvb-ubujc3w7-WUPWF-m5HNOu8ytBSncnc.apk",
+    "MAIL_FROM": "Tech Arena <onboarding@resend.dev>"
+  }
+  // Secrets (set with `wrangler secret put`): ADMIN_PASSWORD (required), RESEND_API_KEY (optional).
+}

@@ -1,0 +1,20 @@
+# Secrets and private data: never commit
+TEST-LOGINS.md
+backups/
+**/.dev.vars
+**/.env
+**/.env*.local
+.claude/
+app/.claude/
+
+# Builds, dependencies and large files
+*.apk
+**/node_modules/
+app/dist/
+**/.wrangler/
+**/.expo/
+
+# Local clone of this repo
+techarena/
+
+.DS_Store

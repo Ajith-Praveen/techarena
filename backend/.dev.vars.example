@@ -1,0 +1,4 @@
+# Copy to .dev.vars for local development (never commit .dev.vars).
+ADMIN_PASSWORD=change-me-admin-password
+# Optional: without it, "Send login details" reports status "not_configured".
+RESEND_API_KEY=
