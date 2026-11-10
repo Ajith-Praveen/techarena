@@ -1243,17 +1243,19 @@ describe('Tech Arena API (team colours and auto poster)', () => {
     assert.equal(typeof dup.body.error.fields.color, 'string');
     const b = await s.api('POST', '/api/teams/register', { body: teamPayload({ teamName: 'Blues', phone: '9600000003', color: blue!.hex }) });
     assert.equal(b.status, 201);
+    // No colour sent (older app): the server gives the team a free one, never a taken one.
     const none = await s.api('POST', '/api/teams/register', { body: teamPayload({ teamName: 'Plain', phone: '9600000004' }) });
     assert.equal(none.status, 201);
-    assert.equal(none.body.team.color, null);
+    assert.match(none.body.team.color, /^#[0-9A-F]{6}$/);
+    assert.ok(![red!.hex, blue!.hex].includes(none.body.team.color));
 
     const taken = (await s.api('GET', '/api/team-colors')).body.colors.filter((c: any) => c.taken).map((c: any) => c.hex);
-    assert.deepEqual(taken.sort(), [red!.hex, blue!.hex].sort());
+    assert.deepEqual(taken.sort(), [red!.hex, blue!.hex, none.body.team.color].sort());
 
     // Changing colour: must be free, lead only.
     assertError(await s.api('PUT', '/api/team/color', { token: b.body.token, body: { color: red!.hex } }), 409, 'CONFLICT');
     assertError(await s.api('PUT', '/api/team/color', { token: b.body.token, body: {} }), 400, 'VALIDATION');
-    const third = palette.body.colors[2].hex;
+    const third = palette.body.colors.find((c: any) => ![red!.hex, blue!.hex, none.body.team.color].includes(c.hex)).hex;
     const changed = await s.api('PUT', '/api/team/color', { token: b.body.token, body: { color: third } });
     assert.equal(changed.status, 200, JSON.stringify(changed.body));
     assert.equal(changed.body.team.color, third);

@@ -43,6 +43,14 @@ app.get('/config', async (c) => {
   });
 });
 
+/** A random colour from the palette that no team has yet (null when all are taken). */
+export async function pickFreeColor(db: D1Database): Promise<string | null> {
+  const { results } = await db.prepare('SELECT color FROM teams WHERE color IS NOT NULL').all<{ color: string }>();
+  const taken = new Set(results.map((r) => r.color));
+  const free = TEAM_COLORS.filter((c) => !taken.has(c.hex));
+  return free.length ? free[randomInt(0, free.length - 1)]!.hex : null;
+}
+
 app.post('/teams/register', async (c) => {
   const db = c.env.DB;
   const body = await readBody(c);
@@ -86,6 +94,8 @@ app.post('/teams/register', async (c) => {
   for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt++) {
     const code = String(randomInt(1000, 9999));
     if (await db.prepare('SELECT 1 FROM teams WHERE code = ?').bind(code).first()) continue;
+    // Teams that didn't pick a colour (e.g. an older app) get a free one, so colours stay unique.
+    const teamColor = color ?? (await pickFreeColor(db));
 
     const { token, stmt: sessionStmt } = await sessionInsertStmt(db, 'lead', leadId);
     const teamExists = 'EXISTS (SELECT 1 FROM teams WHERE id = ?)';
@@ -97,7 +107,7 @@ app.post('/teams/register', async (c) => {
             `INSERT INTO teams (id, name, name_key, code, project_title, project_desc, image_id, poster_id, color, password_hash, order_position, created_at)
              SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ? WHERE ${REGISTRATION_OPEN_SQL}`,
           )
-          .bind(teamId, teamName, nameKey, code, projectTitle, projectDesc, imageId, posterId, color, passwordHash, now),
+          .bind(teamId, teamName, nameKey, code, projectTitle, projectDesc, imageId, posterId, teamColor, passwordHash, now),
         db
           .prepare(`INSERT INTO images (id, mime, data, created_at) SELECT ?, ?, ?, ? WHERE ${teamExists}`)
           .bind(imageId, image!.mime, image!.bytes.buffer, now, teamId),
@@ -148,7 +158,10 @@ app.post('/teams/register', async (c) => {
       if (isConstraintError(err, 'teams.name_key')) {
         throw conflict('Already registered', { teamName: 'This team name is already taken' });
       }
-      if (isConstraintError(err, 'teams.color')) throw conflict('Colour taken', { color: COLOR_TAKEN });
+      if (isConstraintError(err, 'teams.color')) {
+        if (!color) continue; // our auto-picked colour was taken a moment ago: pick again
+        throw conflict('Colour taken', { color: COLOR_TAKEN });
+      }
       if (isConstraintError(err, 'participants.phone')) {
         throw conflict('Already registered', { phone: 'This phone number is already registered' });
       }
