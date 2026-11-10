@@ -11,6 +11,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { PhotoGate } from '@/auth/PhotoGate';
 import { BootOverlay } from '@/components/BootScreen';
+import { AppUpdates } from '@/features/updates/AppUpdates';
 import { colors, fonts } from '@/theme';
 
 SystemUI.setBackgroundColorAsync(colors.bg).catch(() => undefined);
@@ -82,6 +83,7 @@ export default function RootLayout() {
               </PhotoGate>
             ) : null}
             <Boot fontsReady={fontsReady} />
+            {fontsReady ? <AppUpdates /> : null}
           </View>
         </AuthProvider>
       </ThemeProvider>

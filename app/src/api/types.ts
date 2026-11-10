@@ -157,6 +157,10 @@ export interface AppConfig {
   apkUrl: string;
   /** Public GitHub repo for the "Star on GitHub" button (may be empty). */
   githubUrl?: string;
+  /** Installed apps older than this must update (empty = no minimum). */
+  minAppVersion?: string;
+  /** Stable Android download link (empty when no APK is published). */
+  apkDownloadUrl?: string;
 }
 
 export interface RegisterRequest extends ImageUpload {

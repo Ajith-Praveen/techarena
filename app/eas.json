@@ -11,7 +11,8 @@
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://tech-arena.gate-orbit-server.workers.dev"
-      }
+      },
+      "channel": "development"
     },
     "preview": {
       "distribution": "internal",
@@ -20,7 +21,8 @@
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://tech-arena.gate-orbit-server.workers.dev"
-      }
+      },
+      "channel": "preview"
     },
     "production": {
       "android": {
@@ -28,7 +30,8 @@
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://tech-arena.gate-orbit-server.workers.dev"
-      }
+      },
+      "channel": "production"
     }
   },
   "submit": {

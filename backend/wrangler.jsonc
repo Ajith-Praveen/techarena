@@ -25,8 +25,9 @@
     "MAX_TEAM_SIZE": "5",
     "APP_URL": "https://tech-arena.gate-orbit-server.workers.dev",
     "APK_URL": "",
+    "MIN_APP_VERSION": "",
     "GITHUB_URL": "https://github.com/Ajith-Praveen/techarena",
-    "APK_DOWNLOAD_URL": "https://expo.dev/artifacts/eas/qOIEZYIXwwvb-ubujc3w7-WUPWF-m5HNOu8ytBSncnc.apk",
+    "APK_DOWNLOAD_URL": "https://expo.dev/artifacts/eas/x_uGYkUARlyIebWY6wPXMxbld_EqLBjdDgml_7IYr2A.apk",
     "MAIL_FROM": "Tech Arena <onboarding@resend.dev>"
   }
   // Secrets (set with `wrangler secret put`): ADMIN_PASSWORD (required), RESEND_API_KEY (optional).

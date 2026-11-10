@@ -11,6 +11,8 @@ export interface Env {
   APK_URL: string;
   /** Public repo link for the "Star on GitHub" button. */
   GITHUB_URL?: string;
+  /** Oldest installed app version still allowed (e.g. "1.1.0"); older builds are asked to update. */
+  MIN_APP_VERSION?: string;
   /** Where /techarena.apk forwards to (the Android build download). Empty = 404. */
   APK_DOWNLOAD_URL?: string;
   MAIL_FROM: string;

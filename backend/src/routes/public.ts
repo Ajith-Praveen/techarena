@@ -36,6 +36,10 @@ app.get('/config', async (c) => {
     appUrl: c.env.APP_URL ?? '',
     apkUrl: c.env.APK_URL ?? '',
     githubUrl: c.env.GITHUB_URL ?? '',
+    // Installed Android apps older than this show an "Update the app" screen (empty = no minimum).
+    minAppVersion: c.env.MIN_APP_VERSION ?? '',
+    // The stable short download link for the Android app.
+    apkDownloadUrl: c.env.APK_DOWNLOAD_URL ? new URL('/techarena.apk', c.req.url).toString() : '',
   });
 });
 
