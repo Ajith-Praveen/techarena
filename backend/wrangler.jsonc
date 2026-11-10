@@ -27,7 +27,7 @@
     "APK_URL": "",
     "MIN_APP_VERSION": "",
     "GITHUB_URL": "https://github.com/Ajith-Praveen/techarena",
-    "APK_DOWNLOAD_URL": "https://expo.dev/artifacts/eas/x_uGYkUARlyIebWY6wPXMxbld_EqLBjdDgml_7IYr2A.apk",
+    "APK_DOWNLOAD_URL": "https://expo.dev/artifacts/eas/eh1T6o_BN7YD7X2ZTFnAfiGQVmI4zeT7jVfepvav3io.apk",
     "MAIL_FROM": "Tech Arena <onboarding@resend.dev>"
   }
   // Secrets (set with `wrangler secret put`): ADMIN_PASSWORD (required), RESEND_API_KEY (optional).
