@@ -96,6 +96,7 @@ app.delete('/teams/:id', async (c) => {
       .prepare('DELETE FROM images WHERE id IN (SELECT photo_id FROM participants WHERE team_id = ? AND photo_id IS NOT NULL)')
       .bind(team.id),
     db.prepare('DELETE FROM participants WHERE team_id = ?').bind(team.id),
+    db.prepare('DELETE FROM judge_now WHERE team_id = ?').bind(team.id),
     db.prepare('DELETE FROM teams WHERE id = ?').bind(team.id),
   ];
   if (team.image_id) stmts.push(db.prepare('DELETE FROM images WHERE id = ?').bind(team.image_id));

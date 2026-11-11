@@ -542,3 +542,14 @@ export interface AdminRatingsResponse {
   average: number | null;
   ratings: AdminRating[];
 }
+
+// ---------- Turn alerts ----------
+
+export interface TurnResponse {
+  /** Relative to the team a judge is at: `now` (judges are with you), `next`, `after-next`, or null. */
+  stage: 'now' | 'next' | 'after-next' | null;
+  myPosition: number | null;
+  judgesAt: { position: number; teamName: string } | null;
+  /** Changes every time the judges move on; null when there's nothing to alert. */
+  key: string | null;
+}

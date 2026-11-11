@@ -57,6 +57,14 @@ app.get('/teams/by-code/:code', async (c) => {
     ? await db.prepare('SELECT * FROM teams WHERE code = ?').bind(code).first<TeamRow>()
     : null;
   if (!team) throw notFound('No team has that code');
+  // The judge is now at this team: the next two teams in the order get their alerts.
+  await db
+    .prepare(
+      `INSERT INTO judge_now (judge_id, team_id, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT (judge_id) DO UPDATE SET team_id = excluded.team_id, updated_at = excluded.updated_at`,
+    )
+    .bind(judge.id, team.id, nowIso())
+    .run();
   const [people, labels, mine] = await Promise.all([
     loadPublicMembers(db, team.id),
     loadJudgeLabels(db),

@@ -1333,3 +1333,60 @@ describe('Tech Arena API (app ratings)', () => {
     assertError(await s.api('GET', '/api/admin/ratings', { token: judge }), 403, 'FORBIDDEN');
   });
 });
+
+describe('Tech Arena API (turn alerts)', () => {
+  let s: TestServer;
+  before(async () => {
+    s = await startServer();
+  });
+  after(async () => {
+    await s.stop();
+  });
+
+  it('when a judge opens a team, the next team is "next" and the one after is "after-next"', async () => {
+    const admin = (await s.api('POST', '/api/auth/admin-login', { body: { username: 'admin', password: ADMIN_PASSWORD } })).body.token;
+    const regs: any[] = [];
+    for (let i = 0; i < 4; i++) {
+      const r = await s.api('POST', '/api/teams/register', { body: teamPayload({ teamName: `Turn ${i}`, phone: `980000000${i}` }) });
+      assert.equal(r.status, 201);
+      regs.push(r.body);
+    }
+    const turn = async (i: number) => (await s.api('GET', '/api/team/turn', { token: regs[i].token })).body;
+    assert.deepEqual(await turn(0), { stage: null, myPosition: null, judgesAt: null, key: null });
+
+    const order = (await s.api('POST', '/api/admin/order/generate', { token: admin, body: {} })).body.teams as any[];
+    const byPos = (p: number) => regs.findIndex((r) => r.team.id === order[p - 1].id);
+    const made = await s.api('POST', '/api/admin/judges', { token: admin, body: { name: 'Judge Turn', username: 'turnj', password: 'judgepass' } });
+    assert.equal(made.status, 201, JSON.stringify(made.body));
+    const judge = (await s.api('POST', '/api/auth/judge-login', { body: { username: 'turnj', password: 'judgepass' } })).body.token;
+
+    // Judge goes to slot 1.
+    const look = await s.api('GET', `/api/judge/teams/by-code/${regs[byPos(1)].team.code}`, { token: judge });
+    assert.equal(look.status, 200, JSON.stringify(look.body));
+    const t1 = await turn(byPos(1));
+    assert.equal(t1.stage, 'now', JSON.stringify(t1));
+    const t2 = await turn(byPos(2));
+    assert.equal(t2.stage, 'next');
+    assert.equal(t2.judgesAt.position, 1);
+    assert.equal(typeof t2.key, 'string');
+    assert.equal((await turn(byPos(3))).stage, 'after-next');
+    assert.equal((await turn(byPos(4))).stage, null);
+
+    // Judge moves to slot 2: everyone shifts, and keys change so phones ring again.
+    await s.api('GET', `/api/judge/teams/by-code/${regs[byPos(2)].team.code}`, { token: judge });
+    const t3 = await turn(byPos(3));
+    assert.equal(t3.stage, 'next');
+    assert.notEqual(t3.key, t2.key);
+    assert.equal((await turn(byPos(4))).stage, 'after-next');
+    assert.equal((await turn(byPos(1))).stage, null);
+
+    // A team already scored by every judge is not alerted.
+    const ev = await s.api('POST', '/api/judge/evaluations', {
+      token: judge,
+      body: { teamId: regs[byPos(4)].team.id, code: regs[byPos(4)].team.code, scores: scores(5, 5, 5, 5, 5) },
+    });
+    assert.equal(ev.status, 201);
+    assert.equal((await turn(byPos(4))).stage, null);
+    assertError(await s.api('GET', '/api/team/turn', { token: judge }), 403, 'FORBIDDEN');
+  });
+});

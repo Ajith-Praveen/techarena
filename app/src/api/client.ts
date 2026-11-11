@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import type {
   AddMemberRequest,
   AddMemberResponse,
+  TurnResponse,
   AdminRatingsResponse,
   MyRatingResponse,
   RateAppRequest,
@@ -291,6 +292,8 @@ export const api = {
   notify: (body: NotifyRequest) =>
     request<NotifyResponse>('POST', '/api/team/notify', { body, signOutOn401: false }),
   report: () => request<ReportResponse>('GET', '/api/team/report'),
+  /** Where the team is relative to the judges (for the ring alerts). */
+  turn: () => request<TurnResponse>('GET', '/api/team/turn'),
 
   // Judge
   judgeTeamByCode: (code: string) =>

@@ -11,6 +11,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { PhotoGate } from '@/auth/PhotoGate';
 import { BootOverlay } from '@/components/BootScreen';
+import { TurnAlerts } from '@/features/turn/TurnAlerts';
 import { AppUpdates } from '@/features/updates/AppUpdates';
 import { colors, fonts } from '@/theme';
 
@@ -84,6 +85,7 @@ export default function RootLayout() {
             ) : null}
             <Boot fontsReady={fontsReady} />
             {fontsReady ? <AppUpdates /> : null}
+            {fontsReady ? <TurnAlerts /> : null}
           </View>
         </AuthProvider>
       </ThemeProvider>

@@ -274,6 +274,45 @@ app.post('/notify', async (c) => {
   return c.json({ results });
 });
 
+/** Alerts within this window count; older "judge is at team X" records are ignored. */
+const TURN_WINDOW_MS = 4 * 60 * 60 * 1000;
+
+/**
+ * Where this team is relative to the judges: `next` when a judge is at the team just before it,
+ * `after-next` two before. `key` changes whenever the judges move on, so the app rings once per move.
+ */
+app.get('/turn', async (c) => {
+  const db = c.env.DB;
+  const { team } = requireParticipant(c.get('auth'));
+  const since = new Date(Date.now() - TURN_WINDOW_MS).toISOString();
+  const [current, scored, judges, state] = await Promise.all([
+    db
+      .prepare(
+        `SELECT t.id, t.name, t.order_position, n.updated_at FROM judge_now n JOIN teams t ON t.id = n.team_id
+          WHERE n.updated_at >= ? AND t.order_position IS NOT NULL
+          ORDER BY t.order_position DESC, n.updated_at DESC LIMIT 1`,
+      )
+      .bind(since)
+      .first<{ id: string; name: string; order_position: number; updated_at: string }>(),
+    db.prepare('SELECT COUNT(*) AS n FROM evaluations WHERE team_id = ?').bind(team.id).first<{ n: number }>(),
+    db.prepare('SELECT COUNT(*) AS n FROM judges WHERE active = 1').first<{ n: number }>(),
+    getEventState(db),
+  ]);
+  const mine = team.order_position;
+  let stage: 'now' | 'next' | 'after-next' | null = null;
+  const done = (judges?.n ?? 0) > 0 && (scored?.n ?? 0) >= (judges?.n ?? 0);
+  if (current && mine !== null && !done && !state.resultsPublishedAt) {
+    const gap = mine - current.order_position;
+    stage = gap === 0 ? 'now' : gap === 1 ? 'next' : gap === 2 ? 'after-next' : null;
+  }
+  return c.json({
+    stage,
+    myPosition: mine,
+    judgesAt: current ? { position: current.order_position, teamName: current.name } : null,
+    key: stage && current ? `${stage}:${current.id}` : null,
+  });
+});
+
 app.get('/report', async (c) => {
   const db = c.env.DB;
   const { team } = requireParticipant(c.get('auth'));
