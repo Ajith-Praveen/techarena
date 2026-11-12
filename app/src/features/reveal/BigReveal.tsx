@@ -141,6 +141,28 @@ function hitsOf(T: ShowTimes, cd: number[], P: number): Hit[] {
   ];
 }
 
+/** Full screen, tolerating browsers whose fullscreen calls throw or return nothing (older WebKit). */
+function goFullscreen() {
+  try {
+    const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
+    if (document.fullscreenElement) return;
+    const p = el.requestFullscreen ? el.requestFullscreen() : el.webkitRequestFullscreen?.();
+    if (p && typeof (p as Promise<void>).catch === 'function') (p as Promise<void>).catch(() => {});
+  } catch {
+    // Stay windowed.
+  }
+}
+
+function leaveFullscreen() {
+  try {
+    if (!document.fullscreenElement) return;
+    const p = document.exitFullscreen?.();
+    if (p && typeof p.catch === 'function') p.catch(() => {});
+  } catch {
+    // Ignore.
+  }
+}
+
 // ---- Stylesheet + fonts (once) ---------------------------------------------------------------
 function useCinemaStyles() {
   useEffect(() => {
@@ -202,33 +224,74 @@ export function BigReveal({ entries, song, times, eventName, maxPerJudge, onCham
     if (!song) return;
     const a = new Audio(song);
     a.preload = 'auto';
+    a.load();
     audioRef.current = a;
-    let ctx: AudioContext | null = null;
-    try {
-      ctx = new AudioContext();
-      const src = ctx.createMediaElementSource(a);
-      const an = ctx.createAnalyser();
-      an.fftSize = 1024;
-      an.smoothingTimeConstant = 0.5;
-      // Wide range so loud orchestral bass does not pin every bin at the top.
-      an.minDecibels = -85;
-      an.maxDecibels = -5;
-      const gain = ctx.createGain();
-      src.connect(an);
-      an.connect(gain);
-      gain.connect(ctx.destination);
-      graph.current = { ctx, gain, an, buf: new Uint8Array(an.frequencyBinCount) };
-    } catch {
-      graph.current = null; // Plays straight out of the element; the glow follows the beat grid instead.
-    }
     return () => {
       a.pause();
-      void ctx?.close().catch(() => {});
+      const g = graph.current;
+      if (g) void g.ctx.close().catch(() => {});
       graph.current = null;
       audioRef.current = null;
       useAudio.current = false;
     };
   }, [song]);
+
+  /**
+   * Hooks the playing song into Web Audio for the bass-reactive glow. Only on Chrome/Edge/Firefox, and only once the
+   * audio context is really running: a suspended context would silently swallow the song (that is what Safari does).
+   */
+  const attachAnalyser = (a: HTMLAudioElement) => {
+    if (graph.current || typeof window === 'undefined') return;
+    const ua = navigator.userAgent;
+    const safari = /safari/i.test(ua) && !/chrome|chromium|crios|edg|android/i.test(ua);
+    if (safari || typeof AudioContext === 'undefined') return;
+    let ctx: AudioContext;
+    try {
+      ctx = new AudioContext();
+    } catch {
+      return;
+    }
+    const hook = () => {
+      if (ctx.state !== 'running' || graph.current || audioRef.current !== a) {
+        if (!graph.current) void ctx.close().catch(() => {});
+        return;
+      }
+      try {
+        const src = ctx.createMediaElementSource(a);
+        const an = ctx.createAnalyser();
+        an.fftSize = 1024;
+        an.smoothingTimeConstant = 0.5;
+        // Wide range so loud orchestral bass does not pin every bin at the top.
+        an.minDecibels = -85;
+        an.maxDecibels = -5;
+        const gain = ctx.createGain();
+        src.connect(an);
+        an.connect(gain);
+        gain.connect(ctx.destination);
+        graph.current = { ctx, gain, an, buf: new Uint8Array(an.frequencyBinCount) };
+      } catch {
+        void ctx.close().catch(() => {});
+      }
+    };
+    void ctx.resume().then(hook, () => void ctx.close().catch(() => {}));
+  };
+
+  /** Volume fade on the element itself (works everywhere, with or without Web Audio). */
+  const fadeRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fadeTo = (a: HTMLAudioElement, target: number, ms: number, then?: () => void) => {
+    if (fadeRef.current) clearInterval(fadeRef.current);
+    const from = a.volume;
+    const t0 = performance.now();
+    fadeRef.current = setInterval(() => {
+      const k = Math.min(1, (performance.now() - t0) / ms);
+      a.volume = Math.max(0, Math.min(1, from + (target - from) * k));
+      if (k >= 1) {
+        if (fadeRef.current) clearInterval(fadeRef.current);
+        fadeRef.current = null;
+        then?.();
+      }
+    }, 30);
+  };
 
   const now = (): number => {
     const a = audioRef.current;
@@ -336,9 +399,7 @@ export function BigReveal({ entries, song, times, eventName, maxPerJudge, onCham
   // ---- Operator controls --------------------------------------------------------------------
   const begin = () => {
     if (startedRef.current) return;
-    if (typeof document !== 'undefined' && !document.fullscreenElement) {
-      void document.documentElement.requestFullscreen?.().catch(() => {});
-    }
+    goFullscreen();
     const from = Math.max(0, times.countdown - LEAD_IN);
     silent.current = { base: from, t0: performance.now(), paused: false };
     startedRef.current = true;
@@ -346,24 +407,27 @@ export function BigReveal({ entries, song, times, eventName, maxPerJudge, onCham
     const a = audioRef.current;
     if (!a) return;
     useAudio.current = true;
-    try {
-      a.currentTime = from;
-    } catch {
-      // Not seekable yet: it starts from 0 instead.
-    }
-    const g = graph.current;
-    if (g) {
-      void g.ctx.resume();
-      const at = g.ctx.currentTime;
-      g.gain.gain.cancelScheduledValues(at);
-      g.gain.gain.setValueAtTime(0.0001, at);
-      g.gain.gain.linearRampToValueAtTime(1, at + 1.2);
-    }
-    a.play().catch(() => {
-      // Could not play (blocked or bad file): keep going on a silent clock.
-      useAudio.current = false;
-      silent.current = { base: from, t0: performance.now(), paused: false };
-    });
+    const seekTo = () => {
+      try {
+        a.currentTime = from;
+      } catch {
+        // Not seekable: plays from where it is.
+      }
+    };
+    if (a.readyState >= 1) seekTo();
+    else a.addEventListener('loadedmetadata', seekTo, { once: true });
+    a.volume = 0.05;
+    // play() must run right here, inside the key press, or Safari blocks it.
+    a.play()
+      .then(() => {
+        fadeTo(a, 1, 1200);
+        attachAnalyser(a);
+      })
+      .catch(() => {
+        // Could not play (blocked or bad file): keep going on a silent clock.
+        useAudio.current = false;
+        silent.current = { base: from, t0: performance.now(), paused: false };
+      });
   };
 
   const togglePause = () => {
@@ -389,14 +453,9 @@ export function BigReveal({ entries, song, times, eventName, maxPerJudge, onCham
   };
 
   const exit = () => {
-    const g = graph.current;
-    if (g) {
-      const at = g.ctx.currentTime;
-      g.gain.gain.cancelScheduledValues(at);
-      g.gain.gain.setValueAtTime(g.gain.gain.value, at);
-      g.gain.gain.linearRampToValueAtTime(0.0001, at + 0.6);
-    } else audioRef.current?.pause();
-    if (typeof document !== 'undefined' && document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    const a = audioRef.current;
+    if (a && !a.paused) fadeTo(a, 0, 550, () => a.pause());
+    leaveFullscreen();
     setTimeout(onExit, 650);
   };
 
@@ -495,9 +554,7 @@ export function BigReveal({ entries, song, times, eventName, maxPerJudge, onCham
           className={`cin-num ${n === 0 ? 'zero' : ''}`}
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', animationDuration: n === 0 ? undefined : `${dur}s` }}
         >
-          <Metal cls={n === 0 ? 'cin-gold' : 'cin-metal'} size={h * (n === 0 ? 0.66 : 0.6)} style={{ letterSpacing: 0, paddingLeft: 0 }}>
-            {String(n)}
-          </Metal>
+          <Digits cls={n === 0 ? 'cin-gold' : 'cin-metal'} size={h * (n === 0 ? 0.66 : 0.6)} text={String(n)} />
         </div>
         {n > 0 ? <div key={`r${n}`} className="cin-ring" style={{ '--accent': n <= 3 ? '#FFD400' : '#22C3E6' } as CSSProperties} /> : null}
       </div>
@@ -618,6 +675,74 @@ function Later({ show, className, style, children }: { show: boolean; className:
   return (
     <div className={show ? `${className} cin-rise` : className} style={show ? style : { ...style, opacity: 0 }}>
       {children}
+    </div>
+  );
+}
+
+const LETTER_FONT = "'Bangers_400Regular','Bangers',Impact,sans-serif";
+const DIGIT_SHADOW = { x: 0.035, y: 0.045 }; // em
+
+/** Re-renders once web fonts have loaded, so measurements use the real font. */
+function useFontsReady() {
+  const [ready, setReady] = useState(() => typeof document === 'undefined' || !document.fonts || document.fonts.status === 'loaded');
+  useEffect(() => {
+    if (ready || typeof document === 'undefined' || !document.fonts) return;
+    let live = true;
+    void document.fonts.ready.then(() => live && setReady(true));
+    return () => {
+      live = false;
+    };
+  }, [ready]);
+  return ready;
+}
+
+let measureCtx: CanvasRenderingContext2D | null = null;
+/**
+ * How far (in em) the visible ink of `text` sits from the centre of its text box. Bangers leans right and its
+ * digits have uneven side bearings, so a box-centred number looks off-centre (worse in Safari).
+ */
+function inkOffset(text: string, lineHeight: number): { x: number; y: number } {
+  try {
+    measureCtx ??= document.createElement('canvas').getContext('2d');
+    const ctx = measureCtx;
+    if (!ctx) return { x: 0, y: 0 };
+    const px = 200;
+    ctx.font = `400 ${px}px ${LETTER_FONT}`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    const m = ctx.measureText(text);
+    if (!m.actualBoundingBoxRight && !m.actualBoundingBoxAscent) return { x: 0, y: 0 };
+    const inkCx = (m.actualBoundingBoxRight - m.actualBoundingBoxLeft) / 2;
+    const fa = m.fontBoundingBoxAscent ?? m.actualBoundingBoxAscent;
+    const fd = m.fontBoundingBoxDescent ?? m.actualBoundingBoxDescent;
+    const lh = lineHeight * px;
+    const baseline = (lh - (fa + fd)) / 2 + fa; // from the top of the line box
+    const inkCy = baseline + (m.actualBoundingBoxDescent - m.actualBoundingBoxAscent) / 2;
+    return { x: (inkCx - m.width / 2) / px, y: (inkCy - lh / 2) / px };
+  } catch {
+    return { x: 0, y: 0 };
+  }
+}
+
+/** Countdown number whose visible ink (shadow included) sits dead centre, in every browser. */
+function Digits({ cls, size, text }: { cls: string; size: number; text: string }) {
+  const fonts = useFontsReady();
+  const off = useMemo(() => (fonts ? inkOffset(text, 1) : { x: 0, y: 0 }), [fonts, text]);
+  const dx = -(off.x + DIGIT_SHADOW.x / 2);
+  const dy = -(off.y + DIGIT_SHADOW.y / 2);
+  return (
+    <div
+      className={cls}
+      style={{
+        fontSize: size,
+        letterSpacing: 0,
+        paddingLeft: 0,
+        lineHeight: 1,
+        textShadow: `${DIGIT_SHADOW.x}em ${DIGIT_SHADOW.y}em 0 #111`,
+        transform: `translate(${dx.toFixed(4)}em, ${dy.toFixed(4)}em)`,
+      }}
+    >
+      {text}
     </div>
   );
 }

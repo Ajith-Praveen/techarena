@@ -123,13 +123,23 @@ async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRe
   }
 }
 
-export async function loadSong(): Promise<StoredTrack | null> {
-  const t = await run<StoredTrack | undefined>('readonly', (s) => s.get(SONG_KEY));
-  return t?.blob ? t : null;
+/** What is stored: raw bytes (Safari can lose Blobs kept in IndexedDB); older saves kept a Blob. */
+interface SavedSong {
+  name: string;
+  type?: string;
+  data?: ArrayBuffer;
+  blob?: Blob;
 }
 
-export function saveSong(file: File): Promise<unknown> {
-  const value: StoredTrack = { name: file.name, blob: file };
+export async function loadSong(): Promise<StoredTrack | null> {
+  const t = await run<SavedSong | undefined>('readonly', (s) => s.get(SONG_KEY));
+  if (!t) return null;
+  if (t.data) return { name: t.name, blob: new Blob([t.data], { type: t.type || 'audio/mpeg' }) };
+  return t.blob ? { name: t.name, blob: t.blob } : null;
+}
+
+export async function saveSong(file: File): Promise<unknown> {
+  const value: SavedSong = { name: file.name, type: file.type || 'audio/mpeg', data: await file.arrayBuffer() };
   return run('readwrite', (s) => s.put(value, SONG_KEY));
 }
 
