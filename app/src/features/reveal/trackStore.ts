@@ -1,26 +1,89 @@
 /**
- * Music for the big-screen reveal. The organiser picks their own audio files on the projector laptop;
- * they are kept in this browser (IndexedDB) and never uploaded anywhere.
+ * Music for the big-screen reveal. The organiser picks ONE song on the projector laptop; it is kept in this
+ * browser (IndexedDB) and never uploaded anywhere. The whole show runs on that song's clock.
  */
 
-export type Slot = 'countdown' | 'third' | 'second' | 'first';
-export const SLOTS: Slot[] = ['countdown', 'third', 'second', 'first'];
-
-/** Timings inside a track, in seconds. */
-export interface Cue {
-  /** Where playback begins. */
-  start: number;
-  /** The drop: the countdown hits 0 here, or the place is revealed here. */
-  hit: number;
-  /** Teammate photos pop in on every beat after the hit. */
+/** Moments in the song, in seconds from its start. */
+export interface ShowTimes {
+  /** The big "10" appears. */
+  countdown: number;
+  /** The countdown hits 0. */
+  zero: number;
+  /** "Congratulations in advance to the winning teams!" */
+  congrats: number;
+  /** "And the top 3 teams are…" */
+  top3: number;
+  /** Suspense build-up before 3rd place. */
+  build3: number;
+  third: number;
+  second: number;
+  /** Suspense build-up before the champion. */
+  build1: number;
+  first: number;
+  /** All three winners together until the song ends. */
+  finale: number;
+  /** Beat grid: tempo and the time of any one beat. Animations land on this grid. */
   bpm: number;
+  beat: number;
 }
 
-export const DEFAULT_CUES: Record<Slot, Cue> = {
-  countdown: { start: 0, hit: 10, bpm: 120 },
-  third: { start: 0, hit: 4, bpm: 120 },
-  second: { start: 0, hit: 4, bpm: 120 },
-  first: { start: 0, hit: 5, bpm: 120 },
+export type MomentKey = Exclude<keyof ShowTimes, 'bpm' | 'beat'>;
+export const MOMENTS: MomentKey[] = ['countdown', 'zero', 'congrats', 'top3', 'build3', 'third', 'second', 'build1', 'first', 'finale'];
+
+/**
+ * Tuned to the organiser's song (2:03 long, 119.2 BPM, first beat at 24.53 s): each moment sits on a beat
+ * and on the nearest big hit to the times they asked for. Change them if a different file is used.
+ */
+export const DEFAULT_TIMES: ShowTimes = {
+  countdown: 24.53,
+  zero: 48.19,
+  congrats: 49.9,
+  top3: 55.74,
+  build3: 64.8,
+  third: 74.87,
+  second: 84.94,
+  build1: 92.99,
+  first: 101.04,
+  finale: 111.11,
+  bpm: 119.19,
+  beat: 24.53,
+};
+
+/** Seconds per beat (falls back to 120 BPM). */
+export function beatLength(t: ShowTimes): number {
+  return 60 / (t.bpm >= 30 && t.bpm <= 240 ? t.bpm : 120);
+}
+
+/** Moves `x` onto the nearest beat of the grid. */
+export function snapToBeat(x: number, t: ShowTimes): number {
+  const p = beatLength(t);
+  return t.beat + Math.round((x - t.beat) / p) * p;
+}
+
+/** Problems with the order of the moments (each must come after the one before). */
+export function timelineProblems(t: ShowTimes, duration?: number): string[] {
+  const out: string[] = [];
+  for (let i = 1; i < MOMENTS.length; i++) {
+    const a = MOMENTS[i - 1]!;
+    const b = MOMENTS[i]!;
+    if (!(t[b] > t[a])) out.push(`"${MOMENT_LABEL[b]}" must come after "${MOMENT_LABEL[a]}".`);
+  }
+  if (t.zero - t.countdown < 5) out.push('Give the countdown at least 5 seconds.');
+  if (duration && t.finale >= duration) out.push(`The finale (${fmtTime(t.finale)}) is after the end of the song (${fmtTime(duration)}).`);
+  return out;
+}
+
+export const MOMENT_LABEL: Record<MomentKey, string> = {
+  countdown: 'Countdown starts (10)',
+  zero: 'Countdown hits 0',
+  congrats: 'Congratulations',
+  top3: 'And the top 3 teams are',
+  build3: 'Suspense for 3rd place',
+  third: '3rd place revealed',
+  second: '2nd place revealed',
+  build1: 'Suspense for the champion',
+  first: '1st place revealed',
+  finale: 'All 3 winners together',
 };
 
 export interface StoredTrack {
@@ -30,7 +93,8 @@ export interface StoredTrack {
 
 const DB_NAME = 'techarena-reveal';
 const STORE = 'tracks';
-const CUES_KEY = 'techarena.reveal.cues';
+const SONG_KEY = 'show';
+const TIMES_KEY = 'techarena.reveal.times.v1';
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -59,39 +123,38 @@ async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRe
   }
 }
 
-export async function loadTracks(): Promise<Partial<Record<Slot, StoredTrack>>> {
-  const out: Partial<Record<Slot, StoredTrack>> = {};
-  for (const slot of SLOTS) {
-    const t = await run<StoredTrack | undefined>('readonly', (s) => s.get(slot)).catch(() => undefined);
-    if (t?.blob) out[slot] = t;
-  }
-  return out;
+export async function loadSong(): Promise<StoredTrack | null> {
+  const t = await run<StoredTrack | undefined>('readonly', (s) => s.get(SONG_KEY));
+  return t?.blob ? t : null;
 }
 
-export function saveTrack(slot: Slot, file: File): Promise<unknown> {
+export function saveSong(file: File): Promise<unknown> {
   const value: StoredTrack = { name: file.name, blob: file };
-  return run('readwrite', (s) => s.put(value, slot));
+  return run('readwrite', (s) => s.put(value, SONG_KEY));
 }
 
-export function deleteTrack(slot: Slot): Promise<unknown> {
-  return run('readwrite', (s) => s.delete(slot));
+export function deleteSong(): Promise<unknown> {
+  return run('readwrite', (s) => s.delete(SONG_KEY));
 }
 
-export function loadCues(): Record<Slot, Cue> {
+export function loadTimes(): ShowTimes {
   try {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(CUES_KEY) : null;
-    const saved = raw ? (JSON.parse(raw) as Partial<Record<Slot, Partial<Cue>>>) : {};
-    const out = { ...DEFAULT_CUES };
-    for (const slot of SLOTS) out[slot] = { ...DEFAULT_CUES[slot], ...(saved[slot] ?? {}) };
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(TIMES_KEY) : null;
+    const saved = raw ? (JSON.parse(raw) as Partial<ShowTimes>) : {};
+    const out = { ...DEFAULT_TIMES };
+    for (const k of Object.keys(DEFAULT_TIMES) as (keyof ShowTimes)[]) {
+      const v = saved[k];
+      if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
+    }
     return out;
   } catch {
-    return { ...DEFAULT_CUES };
+    return { ...DEFAULT_TIMES };
   }
 }
 
-export function saveCues(cues: Record<Slot, Cue>) {
+export function saveTimes(times: ShowTimes) {
   try {
-    localStorage.setItem(CUES_KEY, JSON.stringify(cues));
+    localStorage.setItem(TIMES_KEY, JSON.stringify(times));
   } catch {
     // Private mode: timings just reset next time.
   }

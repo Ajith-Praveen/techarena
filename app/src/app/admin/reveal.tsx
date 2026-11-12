@@ -7,57 +7,62 @@ import type { LeaderboardEntry, PublicTeam } from '@/api/types';
 import { AppText, Banner, Button, Card, EmptyState, ErrorView, LoadingView, Screen, SectionTitle, TextField } from '@/components';
 import { BigReveal, type ShowEntry } from '@/features/reveal/BigReveal';
 import {
-  DEFAULT_CUES,
-  deleteTrack,
+  DEFAULT_TIMES,
+  deleteSong,
   fmtTime,
-  loadCues,
-  loadTracks,
+  loadSong,
+  loadTimes,
+  MOMENT_LABEL,
+  MOMENTS,
   pickAudioFile,
-  saveCues,
-  saveTrack,
-  SLOTS,
-  type Cue,
-  type Slot,
+  saveSong,
+  saveTimes,
+  timelineProblems,
+  type MomentKey,
+  type ShowTimes,
   type StoredTrack,
 } from '@/features/reveal/trackStore';
 import { useApi, useConfig } from '@/hooks';
 import { plural, toApiError } from '@/lib';
 import { colors, fonts, palette, spacing } from '@/theme';
 
-const SLOT_INFO: Record<Slot, { title: string; what: string; ideas: string }> = {
-  countdown: {
-    title: 'Countdown 10 → 0',
-    what: 'The big numbers count down to the drop: 0 lands exactly on it.',
-    ideas: 'Avengers ideas: "Infinity War" (Avengers: Infinity War), or the build-up of "The Avengers" main theme.',
-  },
-  third: {
-    title: '3rd place',
-    what: '"In 3rd place…" builds until the drop, then the team slams in and each teammate photo pops on the beat.',
-    ideas: 'Avengers ideas: "Avengers: Age of Ultron Title" (Brian Tyler).',
-  },
-  second: {
-    title: '2nd place',
-    what: 'Same as 3rd place, with its own track.',
-    ideas: 'Avengers ideas: "Assemble" (The Avengers, 2012).',
-  },
-  first: {
-    title: '1st place · the grand one',
-    what: '"And the champion is…" until the drop, then the winner, photos on the beat and a confetti storm.',
-    ideas: 'Avengers ideas: "Portals" (Avengers: Endgame) or "The Avengers" main theme.',
-  },
+const MOMENT_HINT: Record<MomentKey, string> = {
+  countdown: 'The big 10 appears. The numbers count down on the beat of the song.',
+  zero: '0 slams in with a flash and a burst of sparks.',
+  congrats: '"Congratulations to the winning teams, in advance!"',
+  top3: '"And the top 3 teams are…" while three shields (III, II, I) light up.',
+  build3: 'Suspense: a charging ring, scrambling letters and a spinning emblem that speeds up. Lights dim just before the hit.',
+  third: '3rd place slams in with the project photo; teammate photos land every 2 beats.',
+  second: 'A short "In second place…" teaser plays 2 seconds before this.',
+  build1: 'Suspense for the champion, in gold. Lights dim just before the hit.',
+  first: 'The champion. Results publish to every phone at this moment (if ticked below).',
+  finale: 'All 3 winners with their project photos and teammates until the song ends.',
 };
 
 const MYSTERY_COLORS = ['#7B3FE4', '#1E5BFF', '#E4002B'];
 
+/** A "classified" placeholder project image, so rehearsals show the photo frame too. */
+function mysteryImage(color: string, rank: number): string {
+  const lines = Array.from({ length: 9 }, (_, i) => `<line x1='${i * 40}' y1='0' x2='${i * 40 - 120}' y2='200'/>`).join('');
+  const svg =
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 200'>` +
+    `<defs><radialGradient id='g' cx='.5' cy='.45' r='.8'><stop offset='0' stop-color='${color}'/><stop offset='1' stop-color='#03050b'/></radialGradient></defs>` +
+    `<rect width='320' height='200' fill='url(#g)'/><g stroke='rgba(255,255,255,.12)' stroke-width='10'>${lines}</g>` +
+    `<rect x='36' y='78' width='248' height='44' fill='rgba(0,0,0,.55)' stroke='#fff' stroke-width='2'/>` +
+    `<text x='160' y='108' font-family='Georgia,serif' font-size='20' font-weight='bold' fill='#fff' text-anchor='middle' letter-spacing='4'>CLASSIFIED ${rank}</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
 function mysteryTeam(rank: number): ShowEntry {
+  const color = MYSTERY_COLORS[rank - 1] ?? '#1E5BFF';
   const team: PublicTeam = {
     id: `mystery-${rank}`,
     name: `Mystery Team ${rank}`,
     projectTitle: 'A top secret project (rehearsal)',
     projectDesc: '',
-    imageUrl: null,
+    imageUrl: mysteryImage(color, rank),
     posterUrl: null,
-    color: MYSTERY_COLORS[rank - 1] ?? null,
+    color,
     orderPosition: null,
     memberNames: ['Agent One', 'Agent Two', 'Agent Three'],
     members: ['Agent One', 'Agent Two', 'Agent Three'].map((name, i) => ({ name, role: i === 0 ? 'lead' : 'member', photoUrl: null })),
@@ -93,9 +98,9 @@ function RevealSetup() {
   const board = useApi(() => api.leaderboard());
   const overview = useApi(() => api.adminOverview());
 
-  const [tracks, setTracks] = useState<Partial<Record<Slot, StoredTrack>>>({});
-  const [durations, setDurations] = useState<Partial<Record<Slot, number>>>({});
-  const [cues, setCues] = useState<Record<Slot, Cue>>(() => loadCues());
+  const [song, setSong] = useState<StoredTrack | null>(null);
+  const [duration, setDuration] = useState<number | null>(null);
+  const [times, setTimes] = useState<ShowTimes>(() => loadTimes());
   const [storeError, setStoreError] = useState<string | null>(null);
   const [publishOn, setPublishOn] = useState(true);
   const [show, setShow] = useState<{ entries: ShowEntry[]; rehearsal: boolean } | null>(null);
@@ -103,91 +108,77 @@ function RevealSetup() {
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
 
-  // Object URLs for the stored files.
-  const urls = useMemo(() => {
-    const out: Partial<Record<Slot, string>> = {};
-    for (const slot of SLOTS) {
-      const t = tracks[slot];
-      if (t) out[slot] = URL.createObjectURL(t.blob);
-    }
-    return out;
-  }, [tracks]);
-  useEffect(() => () => Object.values(urls).forEach((u) => u && URL.revokeObjectURL(u)), [urls]);
+  const url = useMemo(() => (song ? URL.createObjectURL(song.blob) : null), [song]);
+  useEffect(() => () => (url ? URL.revokeObjectURL(url) : undefined), [url]);
 
   useEffect(() => {
-    loadTracks()
-      .then(setTracks)
-      .catch((e: unknown) => setStoreError(e instanceof Error ? e.message : 'Could not read saved music.'));
+    loadSong()
+      .then(setSong)
+      .catch((e: unknown) => setStoreError(e instanceof Error ? e.message : 'Could not read the saved song.'));
   }, []);
 
-  // Track lengths, for the readouts and sanity checks.
   useEffect(() => {
-    for (const slot of SLOTS) {
-      const url = urls[slot];
-      if (!url) continue;
-      const a = new Audio(url);
-      a.preload = 'metadata';
-      a.onloadedmetadata = () => setDurations((d) => ({ ...d, [slot]: a.duration }));
-    }
-  }, [urls]);
+    setDuration(null);
+    if (!url) return;
+    const a = new Audio(url);
+    a.preload = 'metadata';
+    a.onloadedmetadata = () => setDuration(a.duration);
+  }, [url]);
 
-  useEffect(() => saveCues(cues), [cues]);
+  useEffect(() => saveTimes(times), [times]);
 
   // ---- Preview player --------------------------------------------------------------------------
   const preview = useRef<HTMLAudioElement | null>(null);
-  const [previewSlot, setPreviewSlot] = useState<Slot | null>(null);
-  const [previewTime, setPreviewTime] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [clock, setClock] = useState(0);
   useEffect(() => {
-    if (!previewSlot) return;
-    const id = setInterval(() => setPreviewTime(preview.current?.currentTime ?? 0), 100);
+    if (!playing) return;
+    const id = setInterval(() => setClock(preview.current?.currentTime ?? 0), 100);
     return () => clearInterval(id);
-  }, [previewSlot]);
+  }, [playing]);
   useEffect(() => () => preview.current?.pause(), []);
 
   const stopPreview = () => {
     preview.current?.pause();
-    setPreviewSlot(null);
+    setPlaying(false);
   };
-  const playFrom = (slot: Slot, at: number) => {
-    const url = urls[slot];
+  const playFrom = (at: number) => {
     if (!url) return;
     preview.current?.pause();
     const a = new Audio(url);
     a.currentTime = Math.max(0, at);
-    a.onended = () => setPreviewSlot((s) => (s === slot ? null : s));
+    a.onended = () => setPlaying(false);
     preview.current = a;
-    setPreviewSlot(slot);
-    setPreviewTime(a.currentTime);
-    void a.play().catch(() => setPreviewSlot(null));
+    setPlaying(true);
+    setClock(a.currentTime);
+    void a.play().catch(() => setPlaying(false));
   };
 
-  const setCue = (slot: Slot, patch: Partial<Cue>) => setCues((c) => ({ ...c, [slot]: { ...c[slot], ...patch } }));
+  const setTime = (k: keyof ShowTimes, v: number) => setTimes((t) => ({ ...t, [k]: v }));
 
-  const choose = async (slot: Slot) => {
+  const choose = async () => {
     const file = await pickAudioFile();
     if (!file) return;
+    stopPreview();
     try {
-      await saveTrack(slot, file);
-      setTracks((t) => ({ ...t, [slot]: { name: file.name, blob: file } }));
+      await saveSong(file);
+      setSong({ name: file.name, blob: file });
       setStoreError(null);
     } catch (e) {
       setStoreError(e instanceof Error ? e.message : 'Could not save the file in this browser.');
     }
   };
-  const remove = async (slot: Slot) => {
-    if (previewSlot === slot) stopPreview();
-    await deleteTrack(slot).catch(() => {});
-    setTracks((t) => {
-      const n = { ...t };
-      delete n[slot];
-      return n;
-    });
+  const remove = async () => {
+    stopPreview();
+    await deleteSong().catch(() => {});
+    setSong(null);
   };
 
   // ---- Start -----------------------------------------------------------------------------------
   const published = overview.data?.resultsPublished ?? false;
   const pending = overview.data ? Math.max(0, overview.data.expectedEvaluations - overview.data.evaluations) : 0;
   const podium = board.data ? podiumOf(board.data.teams) : null;
+  const problems = timelineProblems(times, duration ?? undefined);
 
   const start = async (rehearsal: boolean) => {
     stopPreview();
@@ -241,45 +232,97 @@ function RevealSetup() {
     );
   }
 
-  const missing = SLOTS.filter((s) => !tracks[s]);
-
   return (
-    <Screen title="Big screen reveal" subtitle="Music-synced results for the projector" backHref="/admin/results">
+    <Screen title="Big screen reveal" subtitle="One song, every moment on the beat" backHref="/admin/results">
       <Card tone="accent">
         <AppText variant="bodyStrong">How it works</AppText>
         <AppText color="textSecondary" style={styles.para}>
-          Load your 4 tracks below and mark the drop in each one. On the night, press Start on the projector laptop: it goes
-          full screen, counts 10 → 0 to the countdown track, then reveals 3rd, 2nd and 1st, each landing on the drop of its
-          own track. Press SPACE (or a presenter clicker) to move to the next place.
+          Load your song below. On the night, press Start on the projector laptop and then SPACE: it goes full screen and the
+          whole show plays to the song by itself. Countdown, congratulations, the top 3, suspense, then 3rd, 2nd and 1st place
+          with their project photos and team photos, and all 3 winners together at the end.
         </AppText>
         <View style={styles.lockRow}>
           <Ionicons name="lock-closed" size={14} color={colors.textSecondary} />
           <AppText variant="caption" color="textSecondary" style={styles.flex}>
-            Music files stay in this browser on this laptop. They are never uploaded.
+            The song stays in this browser on this laptop. It is never uploaded.
           </AppText>
         </View>
       </Card>
 
       {storeError ? <Banner type="error" message={storeError} onClose={() => setStoreError(null)} /> : null}
 
-      <SectionTitle title="Music" />
-      {SLOTS.map((slot) => (
-        <SlotCard
-          key={slot}
-          slot={slot}
-          track={tracks[slot]}
-          duration={durations[slot]}
-          cue={cues[slot]}
-          playing={previewSlot === slot}
-          time={previewSlot === slot ? previewTime : null}
-          onChoose={() => void choose(slot)}
-          onRemove={() => void remove(slot)}
-          onPlay={(at) => playFrom(slot, at)}
-          onStop={stopPreview}
-          onCue={(patch) => setCue(slot, patch)}
-          onReset={() => setCue(slot, DEFAULT_CUES[slot])}
-        />
-      ))}
+      <SectionTitle title="Song" />
+      <Card bandColor={palette.red}>
+        {song ? (
+          <>
+            <View style={styles.fileRow}>
+              <Ionicons name="musical-notes" size={18} color={palette.ink} />
+              <AppText variant="bodyStrong" numberOfLines={1} style={styles.flex}>
+                {song.name}
+              </AppText>
+              {duration ? (
+                <AppText variant="caption" color="muted">
+                  {fmtTime(duration)}
+                </AppText>
+              ) : null}
+            </View>
+            <View style={styles.player}>
+              <AppText style={styles.clock}>{playing ? fmtTime(clock) : '–:––'}</AppText>
+              {playing ? (
+                <Button title="Stop" icon="stop" variant="secondary" size="sm" fullWidth={false} onPress={stopPreview} />
+              ) : (
+                <>
+                  <Button title="Play the show part" icon="play" variant="secondary" size="sm" fullWidth={false} onPress={() => playFrom(times.countdown - 1.6)} />
+                  <Button title="From 0:00" icon="refresh" variant="ghost" size="sm" fullWidth={false} onPress={() => playFrom(0)} />
+                </>
+              )}
+            </View>
+            <View style={styles.fileActions}>
+              <Button title="Replace file" icon="swap-horizontal" variant="ghost" size="sm" fullWidth={false} onPress={() => void choose()} />
+              <Button title="Remove" icon="trash-outline" variant="ghost" size="sm" fullWidth={false} onPress={() => void remove()} />
+            </View>
+          </>
+        ) : (
+          <>
+            <AppText color="textSecondary">Pick the song from this laptop (MP3, M4A or WAV).</AppText>
+            <Button title="Choose song" icon="musical-notes-outline" variant="secondary" onPress={() => void choose()} style={styles.choose} />
+          </>
+        )}
+      </Card>
+
+      <SectionTitle title="Timeline" />
+      <Card>
+        <AppText color="textSecondary">
+          Times are in seconds from the start of the song. They are already tuned to your song: every moment sits on a beat and
+          on a big hit. To change one, type the seconds, or play the song and press Now at the right moment.
+        </AppText>
+        {MOMENTS.map((k) => (
+          <MomentRow
+            key={k}
+            label={MOMENT_LABEL[k]}
+            hint={MOMENT_HINT[k]}
+            value={times[k]}
+            canPlay={!!song}
+            playing={playing}
+            onChange={(v) => setTime(k, v)}
+            onHear={() => playFrom(Math.max(0, times[k] - 3))}
+            onNow={() => setTime(k, Math.round(clock * 100) / 100)}
+          />
+        ))}
+        <View style={styles.cueRow}>
+          <CueField label="Beat (BPM)" value={times.bpm} onChange={(v) => setTime('bpm', Math.max(30, Math.min(240, v || 120)))} />
+          <CueField label="A beat lands at (s)" value={times.beat} onChange={(v) => setTime('beat', v)} />
+        </View>
+        <AppText variant="caption" color="muted" style={styles.para}>
+          The beat grid makes the countdown numbers, pulses and team photos land on the music.
+        </AppText>
+        {problems.map((p) => (
+          <Banner key={p} type="warning" message={p} />
+        ))}
+        <View style={styles.fileActions}>
+          <Button title="Reset to the tuned times" icon="refresh" variant="ghost" size="sm" fullWidth={false} onPress={() => setTimes({ ...DEFAULT_TIMES })} />
+        </View>
+      </Card>
 
       <SectionTitle title="Showtime" />
       <Card>
@@ -299,28 +342,41 @@ function RevealSetup() {
           </Pressable>
         )}
         {podium?.tied ? <Banner type="error" message="There is a tie in the top 3. The judges must decide it before the show." /> : null}
-        {podium && podium.entries.length === 0 ? <Banner type="warning" message="No team has been scored yet. Use the rehearsal to test your music." /> : null}
-        {missing.length ? (
-          <Banner
-            type="warning"
-            message={`No music for: ${missing.map((s) => SLOT_INFO[s].title).join(', ')}. Those parts run silently on a timer.`}
-          />
-        ) : null}
+        {podium && podium.entries.length === 0 ? <Banner type="warning" message="No team has been scored yet. Use the rehearsal to test your song." /> : null}
+        {!song ? <Banner type="warning" message="No song loaded. The show would run silently on a timer." /> : null}
+        {problems.length ? <Banner type="warning" message="Fix the timeline warnings above first." /> : null}
         {startError ? <Banner type="error" message={startError} onClose={() => setStartError(null)} /> : null}
         <View style={styles.startRow}>
-          <Button title="Start the show" icon="play" size="lg" loading={starting} disabled={!!podium?.tied} onPress={() => start(false)} style={styles.flex} />
-          <Button title="Rehearse (mystery teams)" icon="eye-off-outline" variant="secondary" size="lg" onPress={() => start(true)} style={styles.flex} />
+          <Button
+            title="Start the show"
+            icon="play"
+            size="lg"
+            loading={starting}
+            disabled={!!podium?.tied || problems.length > 0}
+            onPress={() => start(false)}
+            style={styles.flex}
+          />
+          <Button
+            title="Rehearse (mystery teams)"
+            icon="eye-off-outline"
+            variant="secondary"
+            size="lg"
+            disabled={problems.length > 0}
+            onPress={() => start(true)}
+            style={styles.flex}
+          />
         </View>
         <AppText variant="caption" color="muted" style={styles.para}>
-          Keys: SPACE / → / clicker = next · ESC = exit. Test the laptop sound on the hall speakers first.
+          Keys: SPACE = start · P = pause / resume · SHIFT + ← / → = jump 5 s (rehearsal) · ESC = exit. Test the laptop sound on
+          the hall speakers first.
         </AppText>
       </Card>
 
       {show ? (
         <BigReveal
           entries={show.entries}
-          tracks={urls}
-          cues={cues}
+          song={url}
+          times={times}
           eventName={config?.eventName || 'Tech Arena'}
           maxPerJudge={config?.maxPerJudge ?? null}
           onChampion={onChampion}
@@ -337,7 +393,7 @@ function RevealSetup() {
 
 function num(v: string, fallback: number): number {
   const n = parseFloat(v.replace(',', '.'));
-  return Number.isFinite(n) && n >= 0 ? Math.round(n * 10) / 10 : fallback;
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : fallback;
 }
 
 function CueField({ label, value, onChange }: { label: string; value: number; onChange: (n: number) => void }) {
@@ -357,103 +413,46 @@ function CueField({ label, value, onChange }: { label: string; value: number; on
   );
 }
 
-function SlotCard({
-  slot,
-  track,
-  duration,
-  cue,
+function MomentRow({
+  label,
+  hint,
+  value,
+  canPlay,
   playing,
-  time,
-  onChoose,
-  onRemove,
-  onPlay,
-  onStop,
-  onCue,
-  onReset,
+  onChange,
+  onHear,
+  onNow,
 }: {
-  slot: Slot;
-  track: StoredTrack | undefined;
-  duration: number | undefined;
-  cue: Cue;
+  label: string;
+  hint: string;
+  value: number;
+  canPlay: boolean;
   playing: boolean;
-  time: number | null;
-  onChoose: () => void;
-  onRemove: () => void;
-  onPlay: (at: number) => void;
-  onStop: () => void;
-  onCue: (patch: Partial<Cue>) => void;
-  onReset: () => void;
+  onChange: (v: number) => void;
+  onHear: () => void;
+  onNow: () => void;
 }) {
-  const info = SLOT_INFO[slot];
-  const isCountdown = slot === 'countdown';
-  const warnings: string[] = [];
-  if (cue.hit <= cue.start) warnings.push('The drop must come after the start time.');
-  if (isCountdown && cue.hit - cue.start < 10)
-    warnings.push(`The countdown begins 10 s before the drop. Start the track at ${Math.max(0, cue.hit - 10).toFixed(1)} s or earlier to show all 10 numbers.`);
-  if (duration && cue.hit > duration) warnings.push(`The drop (${fmtTime(cue.hit)}) is after the end of the track (${fmtTime(duration)}).`);
-
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  const commit = () => onChange(num(text, value));
   return (
-    <Card bandColor={slot === 'first' ? palette.yellow : slot === 'countdown' ? palette.red : palette.blue}>
-      <AppText style={styles.slotTitle}>{info.title}</AppText>
-      <AppText color="textSecondary" style={styles.para}>
-        {info.what}
-      </AppText>
-      <AppText variant="caption" color="muted" style={styles.para}>
-        {info.ideas}
-      </AppText>
-
-      {track ? (
-        <>
-          <View style={styles.fileRow}>
-            <Ionicons name="musical-notes" size={18} color={palette.ink} />
-            <AppText variant="bodyStrong" numberOfLines={1} style={styles.flex}>
-              {track.name}
-            </AppText>
-            {duration ? <AppText variant="caption" color="muted">{fmtTime(duration)}</AppText> : null}
-          </View>
-
-          <View style={styles.player}>
-            <AppText style={styles.clock}>{time !== null ? fmtTime(time) : '–:––'}</AppText>
-            {playing ? (
-              <>
-                <Button title="Stop" icon="stop" variant="secondary" size="sm" fullWidth={false} onPress={onStop} />
-                <Button title="Drop is HERE" icon="flash" size="sm" fullWidth={false} onPress={() => {
-                    if (time !== null) onCue({ hit: Math.round(time * 10) / 10 });
-                  }} />
-                <Button title="Start here" icon="flag-outline" variant="ghost" size="sm" fullWidth={false} onPress={() => {
-                    if (time !== null) onCue({ start: Math.round(time * 10) / 10 });
-                  }} />
-              </>
-            ) : (
-              <>
-                <Button title="Play from start" icon="play" variant="secondary" size="sm" fullWidth={false} onPress={() => onPlay(cue.start)} />
-                <Button title="Hear the drop" icon="headset-outline" variant="secondary" size="sm" fullWidth={false} onPress={() => onPlay(Math.max(cue.start, cue.hit - (isCountdown ? 10 : 3)))} />
-                <Button title="From 0:00" icon="refresh" variant="ghost" size="sm" fullWidth={false} onPress={() => onPlay(0)} />
-              </>
-            )}
-          </View>
-          <AppText variant="caption" color="muted" style={styles.para}>
-            Tip: play the track and press &quot;Drop is HERE&quot; right on the big hit. Fine-tune the seconds below.
-          </AppText>
-
-          <View style={styles.cueRow}>
-            <CueField label="Start at (s)" value={cue.start} onChange={(n) => onCue({ start: n })} />
-            <CueField label={isCountdown ? '0 lands at (s)' : 'Reveal at (s)'} value={cue.hit} onChange={(n) => onCue({ hit: n })} />
-            {isCountdown ? null : <CueField label="Beat (BPM)" value={cue.bpm} onChange={(n) => onCue({ bpm: Math.max(30, Math.min(240, n || 120)) })} />}
-          </View>
-          {warnings.map((w) => (
-            <Banner key={w} type="warning" message={w} />
-          ))}
-          <View style={styles.fileActions}>
-            <Button title="Replace file" icon="swap-horizontal" variant="ghost" size="sm" fullWidth={false} onPress={onChoose} />
-            <Button title="Reset timings" icon="refresh" variant="ghost" size="sm" fullWidth={false} onPress={onReset} />
-            <Button title="Remove" icon="trash-outline" variant="ghost" size="sm" fullWidth={false} onPress={onRemove} />
-          </View>
-        </>
-      ) : (
-        <Button title="Choose audio file" icon="musical-notes-outline" variant="secondary" onPress={onChoose} style={styles.choose} />
-      )}
-    </Card>
+    <View style={styles.moment}>
+      <View style={styles.momentText}>
+        <AppText variant="bodyStrong">
+          {label} <AppText color="muted">· {fmtTime(value)}</AppText>
+        </AppText>
+        <AppText variant="caption" color="textSecondary">
+          {hint}
+        </AppText>
+      </View>
+      <View style={styles.momentControls}>
+        <View style={styles.momentField}>
+          <TextField label="Seconds" value={text} onChangeText={setText} onBlur={commit} onSubmitEditing={commit} containerStyle={styles.noMargin} />
+        </View>
+        {canPlay ? <Button title="Hear" icon="headset-outline" variant="ghost" size="sm" fullWidth={false} onPress={onHear} /> : null}
+        {playing ? <Button title="Now" icon="flash" size="sm" fullWidth={false} onPress={onNow} /> : null}
+      </View>
+    </View>
   );
 }
 
@@ -461,15 +460,26 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   para: { marginTop: spacing.xs },
   lockRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.md },
-  slotTitle: { fontFamily: fonts.display, fontSize: 26, lineHeight: 30, letterSpacing: 1, color: palette.ink },
-  fileRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.md },
+  fileRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   player: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
   clock: { fontFamily: fonts.bold, fontSize: 22, lineHeight: 28, minWidth: 92, color: palette.ink },
-  cueRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md, flexWrap: 'wrap' },
-  cueField: { flexGrow: 1, flexBasis: 120 },
+  cueRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg, flexWrap: 'wrap' },
+  cueField: { flexGrow: 1, flexBasis: 140 },
   noMargin: { marginBottom: 0 },
   fileActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
   choose: { marginTop: spacing.md },
   check: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start', marginBottom: spacing.md },
   startRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginTop: spacing.sm },
+  moment: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  momentText: { flexGrow: 1, flexBasis: 260, flexShrink: 1 },
+  momentControls: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm },
+  momentField: { width: 110 },
 });

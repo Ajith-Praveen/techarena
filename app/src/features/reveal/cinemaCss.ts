@@ -114,6 +114,55 @@ export const CINEMA_CSS = `
   transform:translateX(-120%);animation:cinGlint 1.4s .25s ease-out forwards}
 @keyframes cinGlint{to{transform:translateX(120%)}}
 
+/* Music-reactive layers: --lvl (0..1) is written every frame from the song's bass */
+.cin-root{--lvl:0}
+.cin-lvl{position:absolute;inset:0;pointer-events:none;opacity:calc(var(--lvl) * .7);mix-blend-mode:screen;
+  background:radial-gradient(ellipse 65% 50% at 50% 50%,var(--lvlc,rgba(110,160,255,.55)) 0%,transparent 70%)}
+.cin-kick{position:absolute;inset:0;pointer-events:none;z-index:24;opacity:0;mix-blend-mode:screen;
+  background:radial-gradient(ellipse 60% 48% at 50% 50%,var(--lvlc,rgba(140,185,255,.6)) 0%,transparent 72%)}
+.cin-emblem.driven svg{animation:none}
+.cin-emblem .spin{width:100%;height:100%;will-change:transform}
+
+/* Suspense: charge ring, huge faint numeral, cipher glyphs, blackout before the hit */
+.cin-charge{position:absolute;left:50%;top:50%;pointer-events:none}
+.cin-charge .p{transition:stroke-dashoffset .5s linear}
+.cin-numeral{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);opacity:.09;pointer-events:none;white-space:nowrap}
+.cin-cipher{display:flex;gap:.7vw;justify-content:center}
+.cin-cipher span{width:3.2vw;height:4.4vw;display:flex;align-items:center;justify-content:center;border:1px solid rgba(160,190,240,.35);
+  background:rgba(8,16,34,.6);font-family:'Cinzel',serif;font-weight:900;font-size:2.3vw;color:#a9c2ea;text-shadow:0 0 12px #5f8fff;
+  animation:cinGlyph .45s steps(3) both}
+.cin-cipher.gold span{border-color:rgba(255,210,120,.4);color:#ffe2a0;text-shadow:0 0 12px #ffae2a}
+@keyframes cinGlyph{0%{opacity:.15;transform:translateY(-.4vw)}60%{opacity:1}100%{opacity:.8;transform:none}}
+.cin-dark{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;z-index:15;transition:opacity .5s ease-in}
+.cin-dark.on{opacity:.86}
+.cin-ring.soft{opacity:.45;animation-duration:1.1s}
+
+/* Top 3 shields */
+.cin-shields{display:flex;gap:5vw;align-items:flex-end;justify-content:center}
+.cin-shield{position:relative;width:var(--s);height:calc(var(--s) * 1.18);
+  clip-path:polygon(50% 0,100% 16%,100% 60%,50% 100%,0 60%,0 16%);background:linear-gradient(160deg,#fff,#8e9ab0 40%,#2a313d 50%,#c8d1df 62%,#6b778c);
+  animation:cinSlam .9s cubic-bezier(.2,1.3,.4,1) both}
+.cin-shield.gold{background:linear-gradient(160deg,#fff6d0,#e0a92e 40%,#4a2c00 50%,#ffe08a 62%,#a8730c)}
+.cin-shield.bronze{background:linear-gradient(160deg,#ffe6d2,#c9773f 40%,#3e1a05 50%,#f0b182 62%,#8f4a1d)}
+.cin-shield .in{position:absolute;inset:4%;clip-path:inherit;background:radial-gradient(circle at 50% 30%,#1b2640,#04070e 75%);
+  display:flex;align-items:center;justify-content:center}
+.cin-shield.off{visibility:hidden;animation:none}
+
+/* Project photo frame */
+.cin-proj{position:relative;flex:none;width:var(--pw);aspect-ratio:16/10;border-radius:.4vw;overflow:hidden;background:#05080f;
+  box-shadow:0 0 0 2px var(--medal),0 0 0 .35vw rgba(0,0,0,.7),0 0 6vh var(--medal),0 4vh 8vh rgba(0,0,0,.9);
+  animation:cinProj 1.3s cubic-bezier(.16,1,.3,1) both}
+.cin-proj img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;animation:cinKen 20s linear both}
+.cin-proj:after{content:'';position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.5) 48%,transparent 62%);
+  transform:translateX(-120%);animation:cinGlint 1.6s .6s ease-out forwards}
+.cin-proj .cap{position:absolute;left:0;right:0;bottom:0;padding:1.2vh .8vw .9vh;font:500 calc(var(--pw) * .032)/1.2 'Oswald',sans-serif;
+  letter-spacing:.25em;text-transform:uppercase;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.85))}
+@keyframes cinProj{0%{transform:perspective(1100px) rotateY(-40deg) translateX(-7vw) scale(.88);filter:blur(14px) brightness(2.6);opacity:0}
+  100%{transform:none;filter:none;opacity:1}}
+.cin-proj.right{animation-name:cinProjR}
+@keyframes cinProjR{0%{transform:perspective(1100px) rotateY(40deg) translateX(7vw) scale(.88);filter:blur(14px) brightness(2.6);opacity:0}
+  100%{transform:none;filter:none;opacity:1}}
+
 .cin-op{position:absolute;left:0;right:0;bottom:1.6vh;text-align:center;font:500 12px/1 'Oswald',sans-serif;letter-spacing:.2em;
   text-transform:uppercase;color:#fff;opacity:.28;z-index:40}
 .cin-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;z-index:10}
