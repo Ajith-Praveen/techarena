@@ -29,6 +29,41 @@
     "GITHUB_URL": "https://github.com/Ajith-Praveen/techarena",
     "APK_DOWNLOAD_URL": "https://expo.dev/artifacts/eas/TVrIgyw-GIGUAvpW6sJRRHMLX8xoLEF4P8CdQ9P0puY.apk",
     "MAIL_FROM": "Tech Arena <onboarding@resend.dev>"
-  }
+  },
   // Secrets (set with `wrangler secret put`): ADMIN_PASSWORD (required), RESEND_API_KEY (optional).
+
+  "env": {
+    // Separate practice site (`npx wrangler deploy --env test`) with its own database: nothing done there reaches
+    // the live event. No RESEND_API_KEY is set for it, so it never emails anyone, and team phones signed in to the
+    // live app never poll it, so they never ring for test turns.
+    "test": {
+      "name": "tech-arena-test",
+      "assets": {
+        "directory": "../app/dist",
+        "binding": "ASSETS",
+        "not_found_handling": "single-page-application",
+        "run_worker_first": ["/api/*", "/techarena.apk"]
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "tech-arena-test-db",
+          "database_id": "e1a5474e-be0d-4850-bcc9-d059fe5dd8b1",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "vars": {
+        "EVENT_NAME": "Tech Arena TEST",
+        "ADMIN_USERNAME": "Admin",
+        "DEFAULT_COUNTRY_CODE": "91",
+        "MAX_TEAM_SIZE": "5",
+        "APP_URL": "https://tech-arena-test.gate-orbit-server.workers.dev",
+        "APK_URL": "",
+        "MIN_APP_VERSION": "1.1.0",
+        "GITHUB_URL": "https://github.com/Ajith-Praveen/techarena",
+        "APK_DOWNLOAD_URL": "",
+        "MAIL_FROM": "Tech Arena TEST <onboarding@resend.dev>"
+      }
+    }
+  }
 }
