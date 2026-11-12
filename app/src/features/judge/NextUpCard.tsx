@@ -5,7 +5,7 @@ import { AppText, Badge, Card, TeamImage } from '@/components';
 import { useApi } from '@/hooks';
 import { spacing } from '@/theme';
 
-import { nextUpFor } from './types';
+import { nextUpFor, skippedFor } from './types';
 import { teamColorOf } from '@/lib/teamColor';
 
 export interface NextUpCardProps {
@@ -14,7 +14,7 @@ export interface NextUpCardProps {
 }
 
 /**
- * "Up next" for the judge: the lowest-position team they have not scored yet, with its project
+ * "Now presenting" for the judge: the next team in the order after the last one they scored, with its project
  * image, slot and name, so they know which stall to walk to and whose code to ask for.
  * Renders nothing until the presentation order exists.
  */
@@ -24,6 +24,7 @@ export function NextUpCard({ excludeTeamId }: NextUpCardProps) {
   const teams = data.teams.filter((t) => t.id !== excludeTeamId);
   if (!teams.some((t) => t.orderPosition !== null)) return null;
   const next = nextUpFor(teams);
+  const skipped = skippedFor(teams).filter((t) => t.id !== next?.id);
 
   if (!next) {
     return (
@@ -37,12 +38,12 @@ export function NextUpCard({ excludeTeamId }: NextUpCardProps) {
   }
 
   return (
-    <Card bandColor={teamColorOf(next)} accessibilityLabel={`Up next: position ${next.orderPosition}, ${next.name}`}>
+    <Card bandColor={teamColorOf(next)} accessibilityLabel={`Now presenting: position ${next.orderPosition}, ${next.name}`}>
       <View style={styles.row}>
         <TeamImage url={next.imageUrl} size={76} />
         <View style={styles.flex}>
           <View style={styles.top}>
-            <Badge label="Up next" tone="warning" size="md" />
+            <Badge label="Now presenting" tone="warning" size="md" />
             {next.orderPosition !== null ? <Badge label={`Slot #${next.orderPosition}`} tone="neutral" size="md" /> : null}
           </View>
           <AppText variant="title2" numberOfLines={2}>
@@ -54,6 +55,14 @@ export function NextUpCard({ excludeTeamId }: NextUpCardProps) {
           <AppText variant="caption" color="muted">
             {`${next.evaluationCount} of ${data.judges.length} judges done · ask the team for its code`}
           </AppText>
+          {skipped.length ? (
+            <AppText variant="caption" color="muted" numberOfLines={2}>
+              {`Not scored yet (skipped): ${skipped
+                .slice(0, 3)
+                .map((t) => `#${t.orderPosition} ${t.name}`)
+                .join(', ')}${skipped.length > 3 ? ` +${skipped.length - 3} more` : ''}`}
+            </AppText>
+          ) : null}
         </View>
       </View>
     </Card>

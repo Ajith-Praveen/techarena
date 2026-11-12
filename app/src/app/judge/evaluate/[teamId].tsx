@@ -18,6 +18,7 @@ import {
   TextField,
 } from '@/components';
 import { NextUpCard } from '@/features/judge/NextUpCard';
+import { markScoredHere } from '@/features/judge/types';
 import { ScoreBreakdown } from '@/features/judge/ScoreBreakdown';
 import { TeamConfirmCard } from '@/features/judge/TeamConfirmCard';
 import type { JudgePublicTeam } from '@/features/judge/types';
@@ -194,12 +195,14 @@ export default function JudgeEvaluateScreen() {
         ...(remarks.trim() ? { remarks: remarks.trim() } : {}),
       };
       const res = await api.submitEvaluation(body);
+      markScoredHere(teamId);
       successFeedback();
       setSubmitted(res.evaluation);
     } catch (e) {
       errorFeedback();
       const err = toApiError(e);
       if (err.code === 'ALREADY_EVALUATED') {
+        markScoredHere(teamId);
         setClosed(true);
         setNotice({ type: 'warning', title: 'Already evaluated', message: 'You have already scored this team. Your first submission stands.' });
         void reload();
