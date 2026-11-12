@@ -1,16 +1,14 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Animated, Easing, Modal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
-import Svg, { Polygon } from 'react-native-svg';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { useWindowDimensions } from 'react-native';
 
+import { imageUri } from '@/api/client';
 import type { PublicTeam } from '@/api/types';
-import { AppText, Avatar, TeamImage } from '@/components';
-import { Burst } from '@/components/comic/Burst';
-import { Confetti } from '@/features/shared/results/Confetti';
 import { publicMembers } from '@/features/team/people';
 import { formatAverage } from '@/lib/format';
-import { teamColorOf, textOn } from '@/lib/teamColor';
-import { fonts, palette } from '@/theme';
+import { teamColorOf } from '@/lib/teamColor';
 
+import { CINEMA_CSS, CINEMA_FONTS } from './cinemaCss';
 import type { Cue, Slot } from './trackStore';
 
 export interface ShowEntry {
@@ -29,7 +27,7 @@ export interface BigRevealProps {
   maxPerJudge: number | null;
   /** Called once, the moment 1st place is revealed (used to publish to everyone's phones). */
   onChampion?: () => void;
-  /** Small operator line in the corner (e.g. publish status). */
+  /** Small operator line at the bottom (e.g. publish status). */
   status?: string | null;
   onExit: () => void;
 }
@@ -44,9 +42,29 @@ interface Tick {
 }
 
 const SLOT_OF: Record<number, Slot> = { 1: 'first', 2: 'second', 3: 'third' };
-const PLACE_WORD: Record<number, string> = { 1: '1ST', 2: '2ND', 3: '3RD' };
-const MEDAL: Record<number, string> = { 1: palette.yellow, 2: '#D9DEE6', 3: '#E39A5B' };
-const NUM_COLORS = [palette.red, palette.blue, palette.yellow, palette.green, palette.pink, palette.orange, palette.purple, palette.cyan];
+const PLACE_WORD: Record<number, string> = { 1: 'First place', 2: 'Second place', 3: 'Third place' };
+const METAL_CLASS: Record<number, string> = { 1: 'cin-gold', 2: 'cin-silver', 3: 'cin-bronze' };
+const MEDAL_COLOR: Record<number, string> = { 1: '#ffd36b', 2: '#cfd8e6', 3: '#e59a62' };
+
+// ---- Stylesheet + fonts (once) ---------------------------------------------------------------
+function useCinemaStyles() {
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (!document.getElementById('cin-fonts')) {
+      const l = document.createElement('link');
+      l.id = 'cin-fonts';
+      l.rel = 'stylesheet';
+      l.href = CINEMA_FONTS;
+      document.head.appendChild(l);
+    }
+    if (!document.getElementById('cin-css')) {
+      const s = document.createElement('style');
+      s.id = 'cin-css';
+      s.textContent = CINEMA_CSS;
+      document.head.appendChild(s);
+    }
+  }, []);
+}
 
 function fadeOut(a: HTMLAudioElement, ms = 1400) {
   const v0 = a.volume || 1;
@@ -64,18 +82,22 @@ function fadeOut(a: HTMLAudioElement, ms = 1400) {
   return id;
 }
 
-/** Full-screen, music-synced podium reveal for the projector. Everything is driven by the audio clock. */
+/** Full-screen, music-synced, cinematic podium reveal for the projector. Driven by the audio clock. */
 export function BigReveal({ entries, tracks, cues, eventName, maxPerJudge, onChampion, status, onExit }: BigRevealProps) {
+  useCinemaStyles();
   const { width, height } = useWindowDimensions();
-  const k = Math.max(0.5, Math.min(width / 1280, height / 720));
   // Places revealed in this order: 3rd, 2nd, 1st (whichever exist).
   const places = useMemo(() => [...entries].filter((e) => e.rank >= 1 && e.rank <= 3).sort((a, b) => b.rank - a.rank), [entries]);
 
   const [stage, setStage] = useState<Stage>({ kind: 'ready' });
   const [tick, setTick] = useState<Tick>({ n: null, revealed: false, beat: -999 });
-  const [confetti, setConfetti] = useState(0);
+  const [fx, setFx] = useState<{ id: number; gold: boolean; big: boolean }>({ id: 0, gold: false, big: false });
+  const [sparks, setSparks] = useState(0);
   const stageRef = useRef(stage);
   stageRef.current = stage;
+  const tickRef = useRef(tick);
+  tickRef.current = tick;
+  const camRef = useRef<HTMLDivElement | null>(null);
 
   // ---- Audio -------------------------------------------------------------------------------
   const audios = useRef<Partial<Record<Slot, HTMLAudioElement>>>({});
@@ -93,10 +115,11 @@ export function BigReveal({ entries, tracks, cues, eventName, maxPerJudge, onCha
     }
     audios.current = made;
     const fadeMap = fades.current;
+    const pending = timers.current;
     return () => {
       fadeMap.forEach(clearInterval);
       Object.values(made).forEach((a) => a?.pause());
-      timers.current.forEach(clearTimeout);
+      pending.forEach(clearTimeout);
     };
   }, [tracks]);
 
@@ -164,6 +187,26 @@ export function BigReveal({ entries, tracks, cues, eventName, maxPerJudge, onCha
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cues]);
 
+  /** Flash + shockwave + lens flare + camera shake. */
+  const hit = (gold: boolean, big: boolean) => {
+    setFx((f) => ({ id: f.id + 1, gold, big }));
+    const cam = camRef.current;
+    if (cam?.animate) {
+      const a = big ? 16 : 9;
+      cam.animate(
+        [
+          { transform: 'translate3d(0,0,0)' },
+          { transform: `translate3d(${-a}px,${a * 0.6}px,0) scale(1.02)` },
+          { transform: `translate3d(${a}px,${-a * 0.6}px,0) scale(1.02)` },
+          { transform: `translate3d(${-a * 0.6}px,${a * 0.4}px,0)` },
+          { transform: `translate3d(${a * 0.4}px,${-a * 0.2}px,0)` },
+          { transform: 'translate3d(0,0,0)' },
+        ],
+        { duration: big ? 800 : 600, easing: 'cubic-bezier(.36,.07,.19,.97)' },
+      );
+    }
+  };
+
   const goPlace = (idx: number) => {
     const e = places[idx];
     if (!e) {
@@ -175,31 +218,35 @@ export function BigReveal({ entries, tracks, cues, eventName, maxPerJudge, onCha
     setStage({ kind: 'place', idx });
   };
 
-  // Countdown hits 0: "TOP 3!" splash, then on to the first place.
+  // Countdown hits 0: big hit, "THE TOP 3", then on to the first place.
   useEffect(() => {
     if (stage.kind !== 'countdown' || tick.n !== 0) return;
-    setConfetti((x) => x + 1);
-    timers.current.push(setTimeout(() => setStage({ kind: 'top3' }), 1300));
+    hit(false, true);
+    setSparks((x) => x + 1);
+    timers.current.push(setTimeout(() => setStage({ kind: 'top3' }), 1600));
     timers.current.push(
       setTimeout(() => {
         if (stageRef.current.kind === 'top3') goPlace(0);
-      }, 4300),
+      }, 5200),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage.kind, tick.n]);
 
-  // Reveal moments: confetti for every place, the big one for the champion.
+  // Reveal moments.
   const current = stage.kind === 'place' ? places[stage.idx] : undefined;
-  const photoCount = current ? publicMembers(current.team).length : 0;
+  const memberCount = current ? publicMembers(current.team).length : 0;
   useEffect(() => {
     if (!current || !tick.revealed) return;
-    if (tick.beat === 0) setConfetti((x) => x + 1);
+    if (tick.beat === 0) {
+      hit(current.rank === 1, current.rank === 1);
+      setSparks((x) => x + 1);
+    }
     if (current.rank === 1) {
       if (!championFired.current) {
         championFired.current = true;
         onChampion?.();
       }
-      if (tick.beat === photoCount) setConfetti((x) => x + 1);
+      if (tick.beat === memberCount + 1) setSparks((x) => x + 1);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.team.id, tick.revealed, tick.beat]);
@@ -239,11 +286,13 @@ export function BigReveal({ entries, tracks, cues, eventName, maxPerJudge, onCha
     } else if (s.kind === 'place') {
       if (!tickRef.current.revealed) return; // wait for the drop
       if (s.idx + 1 < places.length) goPlace(s.idx + 1);
-      else setStage({ kind: 'finale' });
+      else {
+        hit(true, false);
+        setSparks((x) => x + 1);
+        setStage({ kind: 'finale' });
+      }
     }
   };
-  const tickRef = useRef(tick);
-  tickRef.current = tick;
   const nextRef = useRef(next);
   nextRef.current = next;
   const exitRef = useRef(exit);
@@ -262,357 +311,454 @@ export function BigReveal({ entries, tracks, cues, eventName, maxPerJudge, onCha
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // ---- Render --------------------------------------------------------------------------------
-  const rayColor =
-    stage.kind === 'place' && tick.revealed && current
-      ? teamColorOf(current.team)
-      : stage.kind === 'finale'
-        ? palette.yellow
-        : palette.red;
-  const fast = stage.kind === 'countdown' || (stage.kind === 'place' && !tick.revealed);
+  // ---- Look ----------------------------------------------------------------------------------
+  const revealed = stage.kind === 'place' && tick.revealed && !!current;
+  const champ = (current?.rank === 1 && stage.kind === 'place') || stage.kind === 'finale';
+  const glow = revealed && current ? `${teamColorOf(current.team)}55` : champ ? '#5a3a0a' : stage.kind === 'top3' ? '#4a3208' : '#0d2a66';
+  const raysOn = (champ && (revealed || stage.kind === 'finale')) || stage.kind === 'top3' || (current?.rank === 1 && !tick.revealed);
+  const backdrop = revealed && current?.team.imageUrl ? imageUri(current.team.imageUrl) : null;
+  const wide = revealed || stage.kind === 'finale' || stage.kind === 'top3';
+  const emberTone: 'cool' | 'warm' | 'gold' = champ ? 'gold' : revealed ? 'warm' : 'cool';
 
   let body: ReactNode = null;
   if (stage.kind === 'ready') {
     body = (
-      <View style={styles.center}>
-        <Shout size={44 * k} color={palette.white}>
-          {eventName.toUpperCase()}
-        </Shout>
-        <Pop key="ready">
-          <Shout size={120 * k} color={palette.yellow}>
-            {'AND THE WINNERS\nARE…'}
-          </Shout>
-        </Pop>
-        <AppText style={[styles.hint, { fontSize: 22 * k, lineHeight: 30 * k, marginTop: 30 * k }]}>Press SPACE to start the countdown</AppText>
-      </View>
+      <div className="cin-center">
+        <Emblem size={height * 0.78} fast={false} opacity={0.35} />
+        <div className="cin-caps cin-track" style={{ fontSize: height * 0.026, color: '#a9bedf' }}>
+          {eventName} presents
+        </div>
+        <div style={{ height: height * 0.03 }} />
+        <Metal cls="cin-metal cin-shine cin-zoom" size={fit('The Results', width, height, 0.16)}>
+          The Results
+        </Metal>
+        <div style={{ height: height * 0.03 }} />
+        <div className="cin-caps cin-rise" style={{ fontSize: height * 0.022, color: '#8ea3c4', animationDelay: '.8s' }}>
+          Project Expo 2026
+        </div>
+        <div className="cin-caps" style={{ position: 'absolute', bottom: height * 0.16, fontSize: 12, opacity: 0.35, letterSpacing: '.3em' }}>
+          Press space to begin
+        </div>
+      </div>
     );
-  } else if (stage.kind === 'countdown' || stage.kind === 'top3') {
-    const n = stage.kind === 'top3' ? -1 : tick.n;
+  } else if (stage.kind === 'countdown') {
+    const n = tick.n;
     body = (
-      <View style={styles.center}>
+      <div className="cin-center">
+        <Emblem size={height * 0.8} fast opacity={n === null ? 0.3 : 0.55} />
         {n === null ? (
           <Pulse beat={tick.beat}>
-            <Shout size={110 * k} color={palette.yellow}>
-              GET READY…
-            </Shout>
+            <Metal cls="cin-metal cin-track" size={fit('Get ready', width, height, 0.09, 1.1)} style={{ letterSpacing: '.3em' }}>
+              Get ready
+            </Metal>
           </Pulse>
-        ) : n === -1 ? (
-          <Pop key="top3">
-            <Burst size={560 * k} color={palette.yellow} points={18} shadow={10 * k}>
-              <Shout size={130 * k} color={palette.red}>
-                {'THE\nTOP 3!'}
-              </Shout>
-            </Burst>
-          </Pop>
         ) : (
-          <Pop key={`n${n}`}>
-            <Burst size={(n === 0 ? 560 : 440) * k} color={NUM_COLORS[n % NUM_COLORS.length]} points={n === 0 ? 20 : 14} shadow={10 * k}>
-              <Shout size={(n === 0 ? 300 : 260) * k} color={textOn(NUM_COLORS[n % NUM_COLORS.length]!)}>
-                {String(n)}
-              </Shout>
-            </Burst>
-          </Pop>
+          <div key={`n${n}`} className={`cin-num ${n === 0 ? 'zero' : ''}`} style={{ position: 'relative' }}>
+            <Metal cls={n <= 3 ? 'cin-gold cin-shine' : 'cin-metal cin-shine'} size={height * (n === 0 ? 0.6 : 0.52)}>
+              {String(n)}
+            </Metal>
+          </div>
         )}
-      </View>
+        {n !== null && n > 0 ? <div key={`r${n}`} className="cin-ring" style={{ '--accent': n <= 3 ? '#ffbf47' : '#7fb0ff', opacity: 0.6 } as CSSProperties} /> : null}
+      </div>
+    );
+  } else if (stage.kind === 'top3') {
+    body = (
+      <div className="cin-center">
+        <div className="cin-caps cin-track" style={{ fontSize: height * 0.03, color: '#ffe3a1' }}>
+          Presenting
+        </div>
+        <div style={{ height: height * 0.02 }} />
+        <Metal cls="cin-gold cin-shine cin-zoom" size={fit('The Top 3', width, height, 0.2)}>
+          The Top 3
+        </Metal>
+      </div>
     );
   } else if (stage.kind === 'place' && current) {
-    body = (
-      <PlaceView entry={current} revealed={tick.revealed} beat={tick.beat} k={k} maxPerJudge={maxPerJudge} />
+    body = revealed ? (
+      <PlaceReveal entry={current} beat={tick.beat} w={width} h={height} maxPerJudge={maxPerJudge} />
+    ) : (
+      <div className="cin-center">
+        <Pulse beat={tick.beat}>
+          {current.rank === 1 ? (
+            <>
+              <div className="cin-caps cin-track" style={{ fontSize: height * 0.032, color: '#ffe3a1' }}>
+                And the
+              </div>
+              <div style={{ height: height * 0.02 }} />
+              <Metal cls="cin-gold cin-shine cin-zoom" size={fit('Champion is', width, height, 0.15)}>
+                Champion is
+              </Metal>
+            </>
+          ) : (
+            <>
+              <div className="cin-caps cin-track" style={{ fontSize: height * 0.03, color: '#a9bedf' }}>
+                In
+              </div>
+              <div style={{ height: height * 0.02 }} />
+              <Metal cls={`${METAL_CLASS[current.rank]} cin-zoom`} size={fit(PLACE_WORD[current.rank]!, width, height, 0.14)}>
+                {PLACE_WORD[current.rank]!}
+              </Metal>
+            </>
+          )}
+        </Pulse>
+      </div>
     );
   } else if (stage.kind === 'finale') {
-    body = <Finale places={places} k={k} />;
+    body = <Finale places={places} w={width} h={height} />;
   }
 
   const waiting = stage.kind === 'place' && tick.revealed;
-  return (
-    <Modal visible transparent={false} animationType="fade" onRequestClose={exit}>
-      <Pressable style={styles.root} onPress={() => nextRef.current()} accessibilityLabel="Next">
-        <Rays color={rayColor} fast={fast} size={Math.hypot(width, height)} />
-        <View style={styles.fill} pointerEvents="box-none">
-          {body}
-        </View>
-        {confetti > 0 ? <Confetti key={confetti} burstKey={confetti} count={current?.rank === 1 || stage.kind === 'finale' ? 160 : 90} /> : null}
-        <View style={styles.operator} pointerEvents="box-none">
-          <AppText style={styles.operatorText}>
-            {[
-              status,
-              waiting && stage.kind === 'place' && stage.idx + 1 < places.length ? 'SPACE: next place' : null,
-              waiting && stage.kind === 'place' && stage.idx + 1 >= places.length ? 'SPACE: podium' : null,
-              'ESC: exit',
-            ]
-              .filter(Boolean)
-              .join('   ·   ')}
-          </AppText>
-        </View>
-      </Pressable>
-    </Modal>
+  const hint = [
+    status,
+    waiting && stage.kind === 'place' ? (stage.idx + 1 < places.length ? 'Space · next place' : 'Space · champions') : null,
+    'Esc · exit',
+  ]
+    .filter(Boolean)
+    .join('     ·     ');
+
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <div className={`cin-root ${wide ? 'wide' : ''}`} onClick={() => nextRef.current()}>
+      <div className="cin-cam" ref={camRef}>
+        <div className="cin-bg" style={{ '--glow': glow } as CSSProperties} />
+        <div
+          key={backdrop ?? 'none'}
+          className={`cin-backdrop ${backdrop ? 'on' : ''}`}
+          style={backdrop ? { backgroundImage: `url("${backdrop}")` } : undefined}
+        />
+        <div className="cin-smoke">
+          <i />
+          <i />
+          <i />
+        </div>
+        <div className={`cin-rays ${raysOn ? 'on' : ''}`} />
+        <Embers tone={emberTone} burst={sparks} />
+        {body}
+        <div className="cin-vig" />
+      </div>
+      {fx.id > 0 ? (
+        <div key={fx.id} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+          <div className="cin-flash" style={fx.big ? undefined : { animationDuration: '.7s' }} />
+          <div className="cin-ring" style={{ '--accent': fx.gold ? '#ffc04a' : '#8fbaff' } as CSSProperties} />
+          <div className="cin-ring late" style={{ '--accent': fx.gold ? '#fff0c0' : '#d8e8ff' } as CSSProperties} />
+          <div className={`cin-flare ${fx.gold ? 'gold' : ''}`} />
+        </div>
+      ) : null}
+      <div className="cin-grain" />
+      <div className="cin-bar top" />
+      <div className="cin-bar bot" />
+      <div className="cin-op">{hint}</div>
+    </div>,
+    document.body,
   );
 }
 
 // ---- Pieces --------------------------------------------------------------------------------------
 
-function Shout({ size, color, children }: { size: number; color: string; children: ReactNode }) {
-  return (
-    <AppText
-      style={{
-        fontFamily: fonts.display,
-        fontSize: size,
-        lineHeight: size * 1.02,
-        letterSpacing: size * 0.03,
-        color,
-        textAlign: 'center',
-        textShadowColor: palette.ink,
-        textShadowOffset: { width: size * 0.05, height: size * 0.05 },
-        textShadowRadius: 0,
-      }}
-    >
-      {children}
-    </AppText>
-  );
-}
-
-/** Springs its children in from big and tilted (remount with a new key to replay). */
-function Pop({ children, from = 0.2, delay = 0 }: { children: ReactNode; from?: number; delay?: number }) {
-  const v = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.sequence([Animated.delay(delay), Animated.spring(v, { toValue: 1, friction: 4, tension: 120, useNativeDriver: false })]).start();
-  }, [v, delay]);
-  return (
-    <Animated.View
-      style={{
-        opacity: v.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 1, 1] }),
-        transform: [
-          { scale: v.interpolate({ inputRange: [0, 1], outputRange: [from, 1] }) },
-          { rotate: v.interpolate({ inputRange: [0, 1], outputRange: ['-12deg', '0deg'] }) },
-        ],
-      }}
-    >
-      {children}
-    </Animated.View>
-  );
-}
-
-/** Bumps on every beat. */
+/** Bumps (scale + brightness) on every beat without remounting its children. */
 function Pulse({ beat, children }: { beat: number; children: ReactNode }) {
-  const v = useRef(new Animated.Value(1)).current;
+  const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    v.setValue(1.12);
-    Animated.timing(v, { toValue: 1, duration: 260, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
-  }, [beat, v]);
-  return <Animated.View style={{ transform: [{ scale: v }] }}>{children}</Animated.View>;
-}
-
-/** Slams down from the camera once `show` is true. */
-function Slam({ show, children, style }: { show: boolean; children: ReactNode; style?: object }) {
-  const v = useRef(new Animated.Value(show ? 1 : 0)).current;
-  useEffect(() => {
-    if (show) Animated.spring(v, { toValue: 1, friction: 6, tension: 110, useNativeDriver: false }).start();
-    else v.setValue(0);
-  }, [show, v]);
-  return (
-    <Animated.View
-      style={[
-        style,
-        {
-          opacity: v.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 1, 1] }),
-          transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [2.4, 1] }) }],
-        },
-      ]}
-    >
-      {children}
-    </Animated.View>
-  );
-}
-
-/** Comic speed rays spinning behind everything. */
-function Rays({ color, fast, size }: { color: string; fast: boolean; size: number }) {
-  const spin = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    spin.setValue(0);
-    const loop = Animated.loop(Animated.timing(spin, { toValue: 1, duration: fast ? 9000 : 30000, easing: Easing.linear, useNativeDriver: false }));
-    loop.start();
-    return () => loop.stop();
-  }, [fast, spin]);
-  const n = 20;
-  const r = size / 2;
-  const points = Array.from({ length: n }, (_, i) => {
-    const a0 = (i / n) * Math.PI * 2;
-    const a1 = a0 + Math.PI / n;
-    return `${r},${r} ${r + Math.cos(a0) * r * 1.05},${r + Math.sin(a0) * r * 1.05} ${r + Math.cos(a1) * r * 1.05},${r + Math.sin(a1) * r * 1.05}`;
-  });
-  return (
-    <View style={[StyleSheet.absoluteFill, styles.raysWrap]} pointerEvents="none">
-      <Animated.View
-        style={{
-          width: size,
-          height: size,
-          transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }],
-        }}
-      >
-        <Svg width={size} height={size}>
-          {points.map((p, i) => (
-            <Polygon key={i} points={p} fill={color} opacity={0.22} />
-          ))}
-        </Svg>
-      </Animated.View>
-    </View>
-  );
-}
-
-function PlaceView({ entry, revealed, beat, k, maxPerJudge }: { entry: ShowEntry; revealed: boolean; beat: number; k: number; maxPerJudge: number | null }) {
-  const people = publicMembers(entry.team);
-  const color = teamColorOf(entry.team);
-  const champion = entry.rank === 1;
-  const shownPhotos = revealed ? Math.max(0, beat) : 0;
-  const photo = Math.min(130, 720 / Math.max(1, people.length)) * k;
-
-  if (!revealed) {
-    return (
-      <View style={styles.center}>
-        <Pulse beat={beat}>
-          <Shout size={(champion ? 120 : 110) * k} color={champion ? palette.yellow : palette.white}>
-            {champion ? 'AND THE\nCHAMPION IS…' : `IN ${PLACE_WORD[entry.rank]} PLACE…`}
-          </Shout>
-        </Pulse>
-      </View>
+    if (beat <= -999) return;
+    ref.current?.animate?.(
+      [
+        { transform: 'scale(1.05)', filter: 'brightness(1.5)' },
+        { transform: 'scale(1)', filter: 'brightness(1)' },
+      ],
+      { duration: 450, easing: 'cubic-bezier(.2,.8,.3,1)' },
     );
-  }
+  }, [beat]);
+  return <div ref={ref}>{children}</div>;
+}
 
+function Metal({ cls, size, children, style }: { cls: string; size: number; children: string; style?: CSSProperties }) {
   return (
-    <View style={[styles.place, { padding: 40 * k, gap: 28 * k }]}>
-      <View style={[styles.placeTop, { gap: 44 * k }]}>
-        <Slam show style={{ width: 440 * k }}>
-          <View style={[styles.frame, { borderWidth: 6 * k, padding: 8 * k, transform: [{ rotate: '-2.5deg' }] }]}>
-            <TeamImage url={entry.team.imageUrl} aspectRatio={4 / 3} borderRadius={2} />
-          </View>
-          <View style={[styles.rankBurst, { right: -56 * k, top: -44 * k }]}>
-            <Burst size={(champion ? 230 : 190) * k} color={MEDAL[entry.rank] ?? palette.yellow} points={16} shadow={8 * k}>
-              <Shout size={(champion ? 66 : 56) * k} color={palette.ink}>
-                {`${PLACE_WORD[entry.rank]}!`}
-              </Shout>
-            </Burst>
-          </View>
-          {champion ? (
-            <View style={[styles.winner, { left: -50 * k, bottom: -60 * k }]} pointerEvents="none">
-              <Pop from={0.1} delay={300}>
-                <Burst size={200 * k} color={palette.red} points={14} shadow={8 * k}>
-                  <Shout size={46 * k} color={palette.yellow}>
-                    {'WIN-\nNER!'}
-                  </Shout>
-                </Burst>
-              </Pop>
-            </View>
-          ) : null}
-        </Slam>
-        <Slam show style={styles.flex}>
-          <View style={[styles.namePlate, { backgroundColor: color, borderWidth: 6 * k, paddingHorizontal: 26 * k, paddingVertical: 14 * k }]}>
-            <Shout size={(entry.team.name.length > 18 ? 66 : 88) * k} color={textOn(color)}>
-              {entry.team.name.toUpperCase()}
-            </Shout>
-          </View>
-          <AppText numberOfLines={3} style={[styles.project, { fontSize: 30 * k, lineHeight: 38 * k, marginTop: 18 * k }]}>
-            {entry.team.projectTitle}
-          </AppText>
-          <View style={[styles.scoreRow, { marginTop: 14 * k, gap: 12 * k }]}>
-            <Shout size={64 * k} color={palette.yellow}>
-              {formatAverage(entry.average)}
-            </Shout>
-            <AppText style={[styles.scoreOf, { fontSize: 26 * k, lineHeight: 30 * k }]}>{maxPerJudge ? `/ ${maxPerJudge} avg` : 'avg'}</AppText>
-          </View>
-        </Slam>
-      </View>
-      <View style={[styles.photos, { gap: 26 * k }]}>
-        {people.map((p, i) =>
-          i < shownPhotos ? (
-            <Pop key={`${p.name}-${i}`} from={0.1}>
-              <View style={styles.personCol}>
-                <View style={[styles.photoRing, { borderColor: color, borderWidth: 6 * k, padding: 3 * k }]}>
-                  <Avatar name={p.name} photoUrl={p.photoUrl} size={photo} />
-                </View>
-                <AppText numberOfLines={1} style={[styles.personName, { fontSize: 24 * k, lineHeight: 30 * k, maxWidth: photo + 60 * k }]}>
-                  {p.name}
-                </AppText>
-              </View>
-            </Pop>
-          ) : (
-            <View key={`${p.name}-${i}`} style={{ width: photo + 18 * k, height: photo + 48 * k }} />
-          ),
-        )}
-      </View>
-    </View>
+    <div className={cls} data-text={children} style={{ fontSize: size, ...style }}>
+      {children}
+    </div>
   );
 }
 
-const PEDESTAL: Record<number, number> = { 1: 200, 2: 140, 3: 100 };
-
-function Finale({ places, k }: { places: ShowEntry[]; k: number }) {
-  const order = [2, 1, 3].map((r) => places.find((p) => p.rank === r)).filter((e): e is ShowEntry => !!e);
+/** Original Tech Arena emblem: a machined ring with tick marks (rotates slowly). */
+function Emblem({ size, fast, opacity }: { size: number; fast: boolean; opacity: number }) {
+  const ticks = Array.from({ length: 72 }, (_, i) => i);
   return (
-    <View style={[styles.finale, { padding: 30 * k }]}>
-      <Pop>
-        <Shout size={92 * k} color={palette.yellow}>
-          CHAMPIONS ASSEMBLED!
-        </Shout>
-      </Pop>
-      <View style={[styles.podium, { gap: 30 * k, marginTop: 20 * k }]}>
-        {order.map((e, i) => {
-          const color = teamColorOf(e.team);
-          const people = publicMembers(e.team);
+    <div
+      className={`cin-emblem ${fast ? 'fast' : ''}`}
+      style={{ width: size, height: size, marginLeft: -size / 2, marginTop: -size / 2, opacity, transition: 'opacity 1s' }}
+    >
+      <svg viewBox="0 0 200 200" width={size} height={size}>
+        <defs>
+          <linearGradient id="cinRingG" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#ffffff" />
+            <stop offset=".45" stopColor="#7d8aa0" />
+            <stop offset=".5" stopColor="#1d2430" />
+            <stop offset=".6" stopColor="#c6d0de" />
+            <stop offset="1" stopColor="#5d6a80" />
+          </linearGradient>
+        </defs>
+        <circle cx="100" cy="100" r="96" fill="none" stroke="url(#cinRingG)" strokeWidth="2.2" />
+        <circle cx="100" cy="100" r="84" fill="none" stroke="url(#cinRingG)" strokeWidth="1" opacity=".7" />
+        <circle cx="100" cy="100" r="62" fill="none" stroke="#9fb8e0" strokeWidth=".4" opacity=".5" strokeDasharray="2 3" />
+        {ticks.map((i) => {
+          const a = (i / ticks.length) * Math.PI * 2;
+          const long = i % 6 === 0;
+          const r1 = long ? 86 : 89;
           return (
-            <Pop key={e.team.id} delay={i * 250} from={0.4}>
-              <View style={[styles.finaleCol, { width: 340 * k }]}>
-                <View style={[styles.finaleCard, { borderWidth: 5 * k, padding: 14 * k, gap: 10 * k }]}>
-                  <View style={[styles.namePlate, { backgroundColor: color, borderWidth: 4 * k, paddingHorizontal: 12 * k, paddingVertical: 6 * k }]}>
-                    <Shout size={(e.team.name.length > 16 ? 32 : 40) * k} color={textOn(color)}>
-                      {e.team.name.toUpperCase()}
-                    </Shout>
-                  </View>
-                  <View style={[styles.finalePeople, { gap: 8 * k }]}>
-                    {people.map((p, j) => (
-                      <Avatar key={`${p.name}-${j}`} name={p.name} photoUrl={p.photoUrl} size={(people.length > 4 ? 52 : 64) * k} />
-                    ))}
-                  </View>
-                </View>
-                <View style={[styles.pedestal, { height: (PEDESTAL[e.rank] ?? 90) * k, backgroundColor: MEDAL[e.rank], borderWidth: 5 * k }]}>
-                  <Shout size={90 * k} color={palette.ink}>
-                    {String(e.rank)}
-                  </Shout>
-                </View>
-              </View>
-            </Pop>
+            <line
+              key={i}
+              x1={100 + Math.cos(a) * r1}
+              y1={100 + Math.sin(a) * r1}
+              x2={100 + Math.cos(a) * 93}
+              y2={100 + Math.sin(a) * 93}
+              stroke={long ? '#e6edf7' : '#7f8ca3'}
+              strokeWidth={long ? 1.2 : 0.5}
+            />
           );
         })}
-      </View>
-    </View>
+        {[0, 120, 240].map((d) => (
+          <polygon key={d} points="100,6 104,15 96,15" fill="#e6edf7" transform={`rotate(${d} 100 100)`} />
+        ))}
+      </svg>
+    </div>
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: palette.ink, overflow: 'hidden', cursor: 'default' } as object,
-  fill: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-  raysWrap: { alignItems: 'center', justifyContent: 'center' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  hint: { fontFamily: fonts.bold, color: palette.white, opacity: 0.7, textAlign: 'center' },
-  flex: { flex: 1 },
-  place: { flex: 1, justifyContent: 'center' },
-  placeTop: { flexDirection: 'row', alignItems: 'center' },
-  frame: { backgroundColor: palette.white, borderColor: palette.ink },
-  rankBurst: { position: 'absolute' },
-  namePlate: { alignSelf: 'flex-start', borderColor: palette.ink, transform: [{ rotate: '-1.5deg' }] },
-  project: { fontFamily: fonts.bold, color: palette.white },
-  scoreRow: { flexDirection: 'row', alignItems: 'baseline' },
-  scoreOf: { fontFamily: fonts.bold, color: palette.white, opacity: 0.8 },
-  photos: { flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap' },
-  personCol: { alignItems: 'center', gap: 8 },
-  photoRing: { borderRadius: 999, backgroundColor: palette.white },
-  personName: { fontFamily: fonts.display, color: palette.white, letterSpacing: 1, textAlign: 'center' },
-  winner: { position: 'absolute', transform: [{ rotate: '-10deg' }] },
-  finale: { flex: 1, alignItems: 'center', justifyContent: 'flex-end' },
-  podium: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center' },
-  finaleCol: { alignItems: 'stretch' },
-  finaleCard: { backgroundColor: palette.paper, borderColor: palette.ink, alignItems: 'center' },
-  finalePeople: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' },
-  pedestal: { borderColor: palette.ink, borderBottomWidth: 0, alignItems: 'center', justifyContent: 'center', marginTop: 12 },
-  operator: { position: 'absolute', left: 0, right: 0, bottom: 10, alignItems: 'center' },
-  operatorText: { fontFamily: fonts.medium, fontSize: 13, lineHeight: 16, color: palette.white, opacity: 0.35 },
-});
+interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  max: number;
+  r: number;
+  hue: number;
+  spark: boolean;
+}
+
+/** Floating embers, plus a spark burst whenever `burst` changes. Additive canvas. */
+function Embers({ tone, burst }: { tone: 'cool' | 'warm' | 'gold'; burst: number }) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  const toneRef = useRef(tone);
+  toneRef.current = tone;
+  const parts = useRef<Particle[]>([]);
+
+  useEffect(() => {
+    const c = ref.current;
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    let raf = 0;
+    let last = performance.now();
+    const resize = () => {
+      c.width = window.innerWidth * dpr;
+      c.height = window.innerHeight * dpr;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+    const hueFor = () =>
+      toneRef.current === 'cool' ? 205 + Math.random() * 25 : toneRef.current === 'gold' ? 38 + Math.random() * 12 : 18 + Math.random() * 20;
+    const loop = (t: number) => {
+      const dt = Math.min(0.05, (t - last) / 1000);
+      last = t;
+      const W = c.width;
+      const H = c.height;
+      const want = toneRef.current === 'gold' ? 200 : 120;
+      let ambient = 0;
+      for (const p of parts.current) if (!p.spark) ambient++;
+      for (let i = ambient; i < want && Math.random() < 0.6; i++) {
+        parts.current.push({
+          x: Math.random() * W,
+          y: H + 10,
+          vx: (Math.random() - 0.5) * 20,
+          vy: -(25 + Math.random() * 60) * dpr,
+          life: 0,
+          max: 6 + Math.random() * 8,
+          r: (0.6 + Math.random() * 1.8) * dpr,
+          hue: hueFor(),
+          spark: false,
+        });
+      }
+      ctx.clearRect(0, 0, W, H);
+      ctx.globalCompositeOperation = 'lighter';
+      parts.current = parts.current.filter((p) => {
+        p.life += dt;
+        if (p.spark) {
+          p.vy += 260 * dpr * dt;
+          p.vx *= 0.985;
+          p.vy *= 0.985;
+        } else {
+          p.vx += Math.sin((t / 1000) * 0.8 + p.x * 0.01) * 6 * dt;
+        }
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        const k = 1 - p.life / p.max;
+        if (k <= 0 || p.y < -20 || p.y > H + 40) return false;
+        const a = Math.min(1, p.life * 3) * k;
+        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 4);
+        g.addColorStop(0, `hsla(${p.hue},100%,${p.spark ? 80 : 70}%,${a})`);
+        g.addColorStop(1, `hsla(${p.hue},100%,50%,0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r * 4, 0, Math.PI * 2);
+        ctx.fill();
+        return true;
+      });
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', resize);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!burst || !ref.current) return;
+    const dpr = window.devicePixelRatio || 1;
+    const W = ref.current.width;
+    const H = ref.current.height;
+    const gold = toneRef.current === 'gold';
+    for (let i = 0; i < (gold ? 420 : 260); i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = (200 + Math.random() * (gold ? 900 : 650)) * dpr;
+      parts.current.push({
+        x: W / 2,
+        y: H * 0.45,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - 150 * dpr,
+        life: 0,
+        max: 1.2 + Math.random() * 1.6,
+        r: (0.8 + Math.random() * 1.6) * dpr,
+        hue: gold ? 40 + Math.random() * 15 : toneRef.current === 'cool' ? 210 : 25 + Math.random() * 20,
+        spark: true,
+      });
+    }
+  }, [burst]);
+
+  return <canvas ref={ref} className="cin-canvas" style={{ width: '100%', height: '100%' }} />;
+}
+
+/** Largest Cinzel caps size (px) at which `text` fits 86% of the screen width, capped at `maxH` of the height. */
+function fit(text: string, w: number, h: number, maxH: number, spacing = 0.92): number {
+  return Math.min(h * maxH, (w * 0.86) / Math.max(4, text.length * spacing));
+}
+const nameSize = (name: string, w: number, h: number, maxH: number) => fit(name, w, h, maxH);
+
+function Hero({ name, photoUrl, color, size, role }: { name: string; photoUrl: string | null; color: string; size: number; role?: string | null }) {
+  const uri = imageUri(photoUrl);
+  const [broken, setBroken] = useState(false);
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]!.toUpperCase())
+    .join('');
+  return (
+    <div className="cin-hero" style={{ '--w': `${size}px`, '--team': color } as CSSProperties}>
+      {uri && !broken ? (
+        <img src={uri} alt={name} onError={() => setBroken(true)} />
+      ) : (
+        <div className="ini">
+          <span className="cin-metal">{initials}</span>
+        </div>
+      )}
+      <div className="rim" />
+      <div className="nm">
+        {name}
+        {role === 'lead' ? <span className="rl">Team lead</span> : null}
+      </div>
+    </div>
+  );
+}
+
+function PlaceReveal({ entry, beat, w, h, maxPerJudge }: { entry: ShowEntry; beat: number; w: number; h: number; maxPerJudge: number | null }) {
+  const people = publicMembers(entry.team);
+  const color = teamColorOf(entry.team);
+  const shown = Math.max(0, beat);
+  const n = Math.max(1, people.length);
+  const card = Math.min(w * 0.16, (w * 0.86) / n - w * 0.018, (h * 0.42) / 1.36);
+  const metal = METAL_CLASS[entry.rank] ?? 'cin-metal';
+  return (
+    <div className="cin-center" style={{ justifyContent: 'flex-start', paddingTop: h * 0.1 }}>
+      <div className="cin-rule cin-caps cin-rise" style={{ fontSize: h * 0.026, color: MEDAL_COLOR[entry.rank] }}>
+        {PLACE_WORD[entry.rank]}
+      </div>
+      <div style={{ height: h * 0.025 }} />
+      <div className="cin-slam">
+        <Metal cls={`${metal} cin-shine`} size={nameSize(entry.team.name, w, h, entry.rank === 1 ? 0.17 : 0.15)}>
+          {entry.team.name}
+        </Metal>
+      </div>
+      <div style={{ height: h * 0.022 }} />
+      <div
+        className="cin-caps cin-rise"
+        style={{ fontSize: h * 0.024, letterSpacing: '.22em', color: '#dfe7f3', fontWeight: 400, maxWidth: w * 0.8, animationDelay: '.35s' }}
+      >
+        {entry.team.projectTitle}
+      </div>
+      <div style={{ height: h * 0.012 }} />
+      <div className="cin-caps cin-rise" style={{ fontSize: h * 0.02, color: MEDAL_COLOR[entry.rank], animationDelay: '.6s' }}>
+        Score {formatAverage(entry.average)}
+        {maxPerJudge ? ` / ${maxPerJudge}` : ''}
+      </div>
+      <div style={{ flex: 1 }} />
+      <div className="cin-heroes" style={{ marginBottom: h * 0.085 }}>
+        {people.map((p, i) =>
+          i < shown ? (
+            <Hero key={`${p.name}-${i}`} name={p.name} photoUrl={p.photoUrl} color={color} size={card} role={p.role} />
+          ) : (
+            <div key={`${p.name}-${i}`} className="cin-hero ghost" style={{ '--w': `${card}px` } as CSSProperties} />
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Finale({ places, w, h }: { places: ShowEntry[]; w: number; h: number }) {
+  const order = [2, 1, 3].map((r) => places.find((p) => p.rank === r)).filter((e): e is ShowEntry => !!e);
+  const colW = w * 0.3;
+  return (
+    <div className="cin-center" style={{ justifyContent: 'flex-start', paddingTop: h * 0.09 }}>
+      <Metal cls="cin-gold cin-shine cin-zoom" size={fit('Champions', w, h, 0.13)}>
+        Champions
+      </Metal>
+      <div className="cin-caps cin-rise" style={{ fontSize: h * 0.02, color: '#ffe3a1', marginTop: h * 0.015, animationDelay: '.5s' }}>
+        Tech Arena · Project Expo 2026
+      </div>
+      <div style={{ flex: 1 }} />
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: w * 0.02, marginBottom: h * 0.09 }}>
+        {order.map((e, i) => {
+          const people = publicMembers(e.team);
+          const big = e.rank === 1;
+          const card = Math.min((colW * (big ? 1.05 : 0.9)) / Math.max(1, people.length) - 8, h * (big ? 0.2 : 0.16));
+          return (
+            <div
+              key={e.team.id}
+              className="cin-rise"
+              style={{ width: colW, display: 'flex', flexDirection: 'column', alignItems: 'center', animationDelay: `${0.4 + i * 0.35}s` }}
+            >
+              <div className="cin-caps" style={{ fontSize: h * 0.018, color: MEDAL_COLOR[e.rank], marginBottom: h * 0.01 }}>
+                {PLACE_WORD[e.rank]}
+              </div>
+              <Metal
+                cls={`${METAL_CLASS[e.rank]} cin-shine`}
+                size={Math.min(h * (big ? 0.07 : 0.05), (colW * 0.95) / Math.max(4, e.team.name.length * 0.8))}
+              >
+                {e.team.name}
+              </Metal>
+              <div className="cin-heroes" style={{ gap: 8, marginTop: h * 0.025 }}>
+                {people.map((p, j) => (
+                  <Hero key={`${p.name}-${j}`} name={p.name.split(' ')[0] ?? p.name} photoUrl={p.photoUrl} color={teamColorOf(e.team)} size={card} />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
