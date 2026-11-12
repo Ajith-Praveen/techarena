@@ -18,3 +18,7 @@ app/dist/
 techarena/
 
 .DS_Store
+
+# Organiser sheets with phone numbers
+Tech-Arena-Presentation-Order.xlsx
+*.xlsx
