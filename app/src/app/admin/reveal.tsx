@@ -22,8 +22,10 @@ import {
   type ShowTimes,
   type StoredTrack,
 } from '@/features/reveal/trackStore';
+import { deleteServerSong, downloadSong, revealInfo, saveServerTimes, uploadSong, type RevealInfo } from '@/features/reveal/songApi';
 import { useApi, useConfig } from '@/hooks';
 import { plural, toApiError } from '@/lib';
+import { openUrl } from '@/lib/share';
 import { colors, fonts, palette, spacing } from '@/theme';
 
 const MOMENT_HINT: Record<MomentKey, string> = {
@@ -79,18 +81,28 @@ function podiumOf(teams: LeaderboardEntry[]): { entries: ShowEntry[]; tied: bool
 }
 
 export default function RevealScreen() {
-  if (Platform.OS !== 'web') {
-    return (
-      <Screen title="Big screen reveal" backHref="/admin/results">
-        <EmptyState
-          icon="tv-outline"
-          title="Open this on the projector laptop"
-          message="The music reveal runs in a web browser (Chrome works best). Sign in as Admin on the laptop connected to the projector."
-        />
-      </Screen>
-    );
-  }
+  if (Platform.OS !== 'web') return <RevealInBrowser />;
   return <RevealSetup />;
+}
+
+/** In the Android app: the full-screen show runs in a browser, so hand over to it (same Admin sign-in). */
+function RevealInBrowser() {
+  const { config } = useConfig();
+  const url = config?.appUrl ? `${config.appUrl.replace(/\/$/, '')}/admin/reveal` : null;
+  return (
+    <Screen title="Big screen reveal" backHref="/admin/results">
+      <EmptyState
+        icon="tv-outline"
+        title="The show runs in a browser"
+        message={
+          url
+            ? `Open ${url} on the laptop connected to the projector (Chrome, Safari or Edge) and sign in as Admin. Your uploaded song and timings are already there.`
+            : 'Open the Tech Arena website on the laptop connected to the projector and sign in as Admin.'
+        }
+        action={url ? { label: 'Open in browser', icon: 'open-outline', onPress: () => openUrl(url) } : undefined}
+      />
+    </Screen>
+  );
 }
 
 function RevealSetup() {
@@ -111,10 +123,50 @@ function RevealSetup() {
   const url = useMemo(() => (song ? URL.createObjectURL(song.blob) : null), [song]);
   useEffect(() => () => (url ? URL.revokeObjectURL(url) : undefined), [url]);
 
+  // The song lives on the server (Admin only); this browser keeps a copy so the show never waits on the network.
+  const [songNote, setSongNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const timesFromServer = useRef(false);
   useEffect(() => {
-    loadSong()
-      .then(setSong)
-      .catch((e: unknown) => setStoreError(e instanceof Error ? e.message : 'Could not read the saved song.'));
+    let live = true;
+    (async () => {
+      const local = await loadSong().catch(() => null);
+      if (live && local) setSong(local);
+      let info: RevealInfo;
+      try {
+        info = await revealInfo();
+      } catch (e) {
+        if (live) setSongNote(local ? 'Offline: using the copy saved in this browser.' : `Could not check the server: ${toApiError(e).message}`);
+        return;
+      }
+      if (!live) return;
+      if (info.times) {
+        timesFromServer.current = true;
+        setTimes((t) => ({ ...t, ...info.times }));
+      }
+      const remote = info.song;
+      if (!remote) {
+        if (local) setSongNote('This song is only in this browser. Choose it again to save it for every device.');
+        return;
+      }
+      if (local && local.name === remote.name && local.blob.size === remote.size && local.updatedAt === remote.updatedAt) {
+        setSongNote(null);
+        return;
+      }
+      setBusy('Downloading the song from the server…');
+      try {
+        const blob = await downloadSong();
+        await saveSong(remote.name, blob, remote.updatedAt).catch(() => {});
+        if (live) setSong({ name: remote.name, blob, updatedAt: remote.updatedAt });
+      } catch (e) {
+        if (live) setStoreError(`Could not download the song: ${toApiError(e).message}`);
+      } finally {
+        if (live) setBusy(null);
+      }
+    })();
+    return () => {
+      live = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -126,6 +178,17 @@ function RevealSetup() {
   }, [url]);
 
   useEffect(() => saveTimes(times), [times]);
+  // Keep the timeline on the server too (debounced), so every device runs the same show.
+  const firstTimes = useRef(true);
+  useEffect(() => {
+    if (firstTimes.current) {
+      firstTimes.current = false;
+      return;
+    }
+    if (timelineProblems(times).length) return;
+    const id = setTimeout(() => void saveServerTimes(times).catch(() => {}), 700);
+    return () => clearTimeout(id);
+  }, [times]);
 
   // ---- Preview player --------------------------------------------------------------------------
   const preview = useRef<HTMLAudioElement | null>(null);
@@ -160,18 +223,33 @@ function RevealSetup() {
     const file = await pickAudioFile();
     if (!file) return;
     stopPreview();
+    setStoreError(null);
+    setBusy('Uploading the song to the server…');
     try {
-      await saveSong(file);
-      setSong({ name: file.name, blob: file });
-      setStoreError(null);
+      const remote = await uploadSong(file);
+      await saveSong(remote.name, file, remote.updatedAt).catch(() => {});
+      setSong({ name: remote.name, blob: file, updatedAt: remote.updatedAt });
+      setSongNote(null);
+      void saveServerTimes(times).catch(() => {});
     } catch (e) {
-      setStoreError(e instanceof Error ? e.message : 'Could not save the file in this browser.');
+      setStoreError(`Could not upload the song: ${toApiError(e).message}`);
+    } finally {
+      setBusy(null);
     }
   };
   const remove = async () => {
     stopPreview();
-    await deleteSong().catch(() => {});
-    setSong(null);
+    setBusy('Removing…');
+    try {
+      await deleteServerSong();
+      await deleteSong().catch(() => {});
+      setSong(null);
+      setSongNote(null);
+    } catch (e) {
+      setStoreError(`Could not remove the song: ${toApiError(e).message}`);
+    } finally {
+      setBusy(null);
+    }
   };
 
   // ---- Start -----------------------------------------------------------------------------------
@@ -237,14 +315,14 @@ function RevealSetup() {
       <Card tone="accent">
         <AppText variant="bodyStrong">How it works</AppText>
         <AppText color="textSecondary" style={styles.para}>
-          Load your song below. On the night, press Start on the projector laptop and then SPACE: it goes full screen and the
-          whole show plays to the song by itself. Countdown, congratulations, the top 3, suspense, then 3rd, 2nd and 1st place
+          Upload your song once below. On the night, sign in as Admin on the projector laptop (any browser: Chrome, Safari,
+          Edge), press Start and then SPACE: it goes full screen and the whole show plays to the song by itself. Countdown, congratulations, the top 3, suspense, then 3rd, 2nd and 1st place
           with their project photos and team photos, and all 3 winners together at the end.
         </AppText>
         <View style={styles.lockRow}>
           <Ionicons name="lock-closed" size={14} color={colors.textSecondary} />
           <AppText variant="caption" color="textSecondary" style={styles.flex}>
-            The song stays in this browser on this laptop. It is never uploaded.
+            Only the Admin account can play or download the song. Students, teams and judges never get it.
           </AppText>
         </View>
       </Card>
@@ -253,6 +331,8 @@ function RevealSetup() {
 
       <SectionTitle title="Song" />
       <Card bandColor={palette.red}>
+        {busy ? <Banner type="info" message={busy} /> : null}
+        {songNote ? <Banner type="warning" message={songNote} /> : null}
         {song ? (
           <>
             <View style={styles.fileRow}>
@@ -278,14 +358,16 @@ function RevealSetup() {
               )}
             </View>
             <View style={styles.fileActions}>
-              <Button title="Replace file" icon="swap-horizontal" variant="ghost" size="sm" fullWidth={false} onPress={() => void choose()} />
-              <Button title="Remove" icon="trash-outline" variant="ghost" size="sm" fullWidth={false} onPress={() => void remove()} />
+              <Button title="Replace file" icon="swap-horizontal" variant="ghost" size="sm" fullWidth={false} disabled={!!busy} onPress={() => void choose()} />
+              <Button title="Remove" icon="trash-outline" variant="ghost" size="sm" fullWidth={false} disabled={!!busy} onPress={() => void remove()} />
             </View>
           </>
         ) : (
           <>
-            <AppText color="textSecondary">Pick the song from this laptop (MP3, M4A or WAV).</AppText>
-            <Button title="Choose song" icon="musical-notes-outline" variant="secondary" onPress={() => void choose()} style={styles.choose} />
+            <AppText color="textSecondary">
+              Pick the song (MP3, M4A or WAV). It is saved for the Admin account, so it is there on any device you sign in on.
+            </AppText>
+            <Button title="Choose song" icon="musical-notes-outline" variant="secondary" disabled={!!busy} onPress={() => void choose()} style={styles.choose} />
           </>
         )}
       </Card>

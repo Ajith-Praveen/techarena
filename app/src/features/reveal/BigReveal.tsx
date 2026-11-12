@@ -469,19 +469,24 @@ export function BigReveal({ entries, song, times, eventName, maxPerJudge, onCham
       } else if (!startedRef.current) {
         if (e.code === 'Space' || e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'PageDown') {
           e.preventDefault();
+          e.stopPropagation();
           k.begin();
         }
       } else if (e.key === 'p' || e.key === 'P') {
         k.togglePause();
       } else if (e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         e.preventDefault();
+        e.stopPropagation();
         k.seek(e.key === 'ArrowLeft' ? -5 : 5);
       } else if (e.code === 'Space') {
         e.preventDefault(); // A stray SPACE / clicker press must not scroll or restart anything.
+        e.stopPropagation();
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // Capture phase + drop focus: otherwise the focused "Start the show" button eats the SPACE press.
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, []);
 
   // ---- Look ----------------------------------------------------------------------------------

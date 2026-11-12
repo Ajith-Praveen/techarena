@@ -89,6 +89,8 @@ export const MOMENT_LABEL: Record<MomentKey, string> = {
 export interface StoredTrack {
   name: string;
   blob: Blob;
+  /** Server copy this was downloaded from / uploaded as (so we know when it is stale). */
+  updatedAt?: string;
 }
 
 const DB_NAME = 'techarena-reveal';
@@ -126,6 +128,7 @@ async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRe
 /** What is stored: raw bytes (Safari can lose Blobs kept in IndexedDB); older saves kept a Blob. */
 interface SavedSong {
   name: string;
+  updatedAt?: string;
   type?: string;
   data?: ArrayBuffer;
   blob?: Blob;
@@ -134,12 +137,13 @@ interface SavedSong {
 export async function loadSong(): Promise<StoredTrack | null> {
   const t = await run<SavedSong | undefined>('readonly', (s) => s.get(SONG_KEY));
   if (!t) return null;
-  if (t.data) return { name: t.name, blob: new Blob([t.data], { type: t.type || 'audio/mpeg' }) };
-  return t.blob ? { name: t.name, blob: t.blob } : null;
+  if (t.data) return { name: t.name, updatedAt: t.updatedAt, blob: new Blob([t.data], { type: t.type || 'audio/mpeg' }) };
+  return t.blob ? { name: t.name, updatedAt: t.updatedAt, blob: t.blob } : null;
 }
 
-export async function saveSong(file: File): Promise<unknown> {
-  const value: SavedSong = { name: file.name, type: file.type || 'audio/mpeg', data: await file.arrayBuffer() };
+/** Keeps a copy of the song in this browser (a cache of the server copy, so the show never waits on the network). */
+export async function saveSong(name: string, blob: Blob, updatedAt?: string): Promise<unknown> {
+  const value: SavedSong = { name, updatedAt, type: blob.type || 'audio/mpeg', data: await blob.arrayBuffer() };
   return run('readwrite', (s) => s.put(value, SONG_KEY));
 }
 

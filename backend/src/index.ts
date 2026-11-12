@@ -8,6 +8,7 @@ import judgeRoutes from './routes/judge';
 import publicRoutes from './routes/public';
 import ratingRoutes from './routes/ratings';
 import resultsRoutes from './routes/results';
+import revealRoutes from './routes/reveal';
 import teamRoutes from './routes/team';
 
 const app = new Hono<AppEnv>();
@@ -40,6 +41,7 @@ app.route('/api', resultsRoutes);
 app.route('/api', ratingRoutes);
 app.route('/api/team', teamRoutes);
 app.route('/api/judge', judgeRoutes);
+app.route('/api/admin/reveal', revealRoutes);
 app.route('/api/admin', adminRoutes);
 
 app.notFound((c) => {
