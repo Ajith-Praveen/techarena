@@ -31,8 +31,8 @@ export type MomentKey = Exclude<keyof ShowTimes, 'bpm' | 'beat'>;
 export const MOMENTS: MomentKey[] = ['countdown', 'zero', 'congrats', 'top3', 'build3', 'third', 'second', 'build1', 'first', 'finale'];
 
 /**
- * Tuned to the organiser's song (2:03 long, 119.2 BPM, first beat at 24.53 s): each moment sits on a beat
- * and on the nearest big hit to the times they asked for. Change them if a different file is used.
+ * Tuned to the organiser's song (2:03 long, 119.2 BPM, first beat at 24.53 s): each moment sits on the beat
+ * nearest to the time they asked for (1st place at 1:40, all three from 1:51 to the end). Change them if a different file is used.
  */
 export const DEFAULT_TIMES: ShowTimes = {
   countdown: 24.53,
@@ -43,7 +43,7 @@ export const DEFAULT_TIMES: ShowTimes = {
   third: 74.87,
   second: 84.94,
   build1: 92.99,
-  first: 101.04,
+  first: 100.04,
   finale: 111.11,
   bpm: 119.19,
   beat: 24.53,
@@ -94,7 +94,7 @@ export interface StoredTrack {
 const DB_NAME = 'techarena-reveal';
 const STORE = 'tracks';
 const SONG_KEY = 'show';
-const TIMES_KEY = 'techarena.reveal.times.v1';
+const TIMES_KEY = 'techarena.reveal.times.v2';
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {

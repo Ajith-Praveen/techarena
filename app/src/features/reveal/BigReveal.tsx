@@ -6,7 +6,7 @@ import { imageUri } from '@/api/client';
 import type { PublicTeam } from '@/api/types';
 import { publicMembers } from '@/features/team/people';
 import { formatAverage } from '@/lib/format';
-import { teamColorOf } from '@/lib/teamColor';
+import { accentFor, luminance, teamColorOf, textOn } from '@/lib/teamColor';
 
 import { CINEMA_CSS, CINEMA_FONTS } from './cinemaCss';
 import { beatLength, snapToBeat, type ShowTimes } from './trackStore';
@@ -51,7 +51,7 @@ interface Frame {
 }
 
 type Tone = 'blue' | 'gold' | 'silver' | 'bronze';
-const TONE: Record<Tone, string> = { blue: '#8fbaff', gold: '#ffc04a', silver: '#e4ecf8', bronze: '#ec9a5e' };
+const TONE: Record<Tone, string> = { blue: '#22C3E6', gold: '#FFD400', silver: '#FFFFFF', bronze: '#FF7A1A' };
 interface Hit {
   at: number;
   tone: Tone;
@@ -60,6 +60,8 @@ interface Hit {
   soft?: boolean;
   /** 0 none, 1 burst, 2 storm. */
   sparks: number;
+  /** Comic sound-effect word shown in a POW burst. */
+  sfx?: string;
 }
 
 interface Graph {
@@ -77,9 +79,13 @@ const TEASE_BEATS = 4;
 const PLACE_WORD: Record<number, string> = { 1: 'First place', 2: 'Second place', 3: 'Third place' };
 const ROMAN: Record<number, string> = { 1: 'I', 2: 'II', 3: 'III' };
 const METAL_CLASS: Record<number, string> = { 1: 'cin-gold', 2: 'cin-silver', 3: 'cin-bronze' };
-const MEDAL_COLOR: Record<number, string> = { 1: '#ffd36b', 2: '#cfd8e6', 3: '#e59a62' };
+const MEDAL_COLOR: Record<number, string> = { 1: '#FFD400', 2: '#FFFFFF', 3: '#FF7A1A' };
+const CAP_CLASS: Record<number, string> = { 1: '', 2: 'white', 3: 'orange' };
+const ORDINAL: Record<number, string> = { 1: '1st place', 2: '2nd place', 3: '3rd place' };
 
 const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
+/** Team-name lettering colour that pops on the team's own colour: red on light colours, yellow on dark ones. */
+const nameFill = (c: string) => (luminance(c) > 0.4 ? '#E4002B' : accentFor(c));
 
 /** When each countdown number (10, 9 … 1, 0) appears: evenly spread, each on a beat. */
 function countdownTimes(T: ShowTimes): number[] {
@@ -122,15 +128,15 @@ function hitsOf(T: ShowTimes, cd: number[], P: number): Hit[] {
   return [
     // 3, 2, 1: a nudge on each.
     ...cd.slice(7, 10).map((at): Hit => ({ at, tone: 'gold', big: false, soft: true, sparks: 0 })),
-    { at: T.zero, tone: 'blue', big: true, sparks: 1 },
-    { at: T.congrats, tone: 'blue', big: false, sparks: 0 },
-    { at: T.top3, tone: 'gold', big: false, sparks: 0 },
-    { at: T.third, tone: 'bronze', big: true, sparks: 1 },
-    { at: T.second, tone: 'silver', big: true, sparks: 1 },
-    { at: T.first, tone: 'gold', big: true, sparks: 2 },
+    { at: T.zero, tone: 'blue', big: true, sparks: 1, sfx: 'BOOM!' },
+    { at: T.congrats, tone: 'blue', big: false, sparks: 0, sfx: 'WOW!' },
+    { at: T.top3, tone: 'gold', big: false, sparks: 0, sfx: 'WHAM!' },
+    { at: T.third, tone: 'bronze', big: true, sparks: 1, sfx: 'POW!' },
+    { at: T.second, tone: 'silver', big: true, sparks: 1, sfx: 'KA-POW!' },
+    { at: T.first, tone: 'gold', big: true, sparks: 2, sfx: 'KABOOM!' },
     { at: T.first + 4 * P, tone: 'gold', big: false, soft: true, sparks: 2 },
     { at: T.first + 8 * P, tone: 'gold', big: false, soft: true, sparks: 1 },
-    { at: T.finale, tone: 'gold', big: true, sparks: 2 },
+    { at: T.finale, tone: 'gold', big: true, sparks: 2, sfx: 'YEAH!' },
     { at: T.finale + 4 * P, tone: 'gold', big: false, soft: true, sparks: 1 },
   ];
 }
@@ -158,7 +164,7 @@ function useCinemaStyles() {
 }
 
 /**
- * Full-screen, cinematic podium reveal for the projector, choreographed to ONE song.
+ * Full-screen, comic-book podium reveal for the projector, choreographed to ONE song.
  * Everything on screen is derived from the song's playback position, so it can never drift out of sync.
  */
 export function BigReveal({ entries, song, times, eventName, maxPerJudge, onChampion, status, onExit }: BigRevealProps) {
@@ -176,7 +182,7 @@ export function BigReveal({ entries, song, times, eventName, maxPerJudge, onCham
   const [started, setStarted] = useState(false);
   const [paused, setPaused] = useState(false);
   const [frame, setFrame] = useState<Frame>({ key: 'ready', scene: { kind: 'intro' }, beat: 0, t: 0 });
-  const [fx, setFx] = useState<{ id: number; tone: Tone; big: boolean }>({ id: 0, tone: 'blue', big: false });
+  const [fx, setFx] = useState<{ id: number; tone: Tone; big: boolean; sfx?: string }>({ id: 0, tone: 'blue', big: false });
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const camRef = useRef<HTMLDivElement | null>(null);
@@ -245,9 +251,9 @@ export function BigReveal({ entries, song, times, eventName, maxPerJudge, onCham
     );
   };
 
-  /** A scripted hit: flash + shockwave + lens flare + camera shake (+ sparks). */
+  /** A scripted hit: flash + ink shockwave + POW burst + camera shake (+ confetti). */
   const fire = (h: Hit) => {
-    if (!h.soft) setFx((f) => ({ id: f.id + 1, tone: h.tone, big: h.big }));
+    if (!h.soft) setFx((f) => ({ id: f.id + 1, tone: h.tone, big: h.big, sfx: h.sfx }));
     shake(h.big ? 16 : h.soft ? 6 : 9, h.big ? 800 : 520);
     if (h.sparks) burstRef.current?.(h.sparks > 1 ? 520 : 300, h.sparks > 1 ? 1.35 : 1);
     if (h.soft) kickRef.current?.animate?.([{ opacity: 0.6 }, { opacity: 0 }], { duration: 500, easing: 'ease-out' });
@@ -427,43 +433,41 @@ export function BigReveal({ entries, song, times, eventName, maxPerJudge, onCham
   const rank = scene.kind === 'build' || scene.kind === 'reveal' ? scene.rank : null;
   const entry = rank ? byRank.get(rank) : undefined;
   const revealed = scene.kind === 'reveal' && !!entry;
-  const champ = rank === 1 || scene.kind === 'finale';
-  const showcase = revealed ? entry : scene.kind === 'finale' ? byRank.get(1) : undefined;
   const teamColor = revealed && entry ? teamColorOf(entry.team) : null;
 
-  const glow = !started
-    ? '#0d2a66'
-    : teamColor
-      ? `${teamColor}55`
-      : champ
-        ? '#5a3a0a'
-        : scene.kind === 'top3'
-          ? '#4a3208'
-          : rank === 3
-            ? '#3a1d0c'
-            : '#0d2a66';
-  const lvlColor = champ || scene.kind === 'top3' ? 'rgba(255,190,80,.5)' : teamColor ? `${teamColor}88` : 'rgba(110,160,255,.5)';
-  const raysOn = started && (champ || scene.kind === 'top3');
-  const backdropImg = showcase ? imageUri(showcase.team.imageUrl ?? showcase.team.posterUrl) : null;
-  const wide = started && (revealed || scene.kind === 'finale' || scene.kind === 'top3' || scene.kind === 'congrats');
-  const emberTone: 'cool' | 'warm' | 'gold' = champ ? 'gold' : rank ? 'warm' : 'cool';
+  // Flat comic colour for each scene; a revealed team gets its own chosen colour.
+  let bg = '#1E5BFF';
+  if (started) {
+    if (scene.kind === 'count') bg = scene.n === 0 ? '#111111' : scene.n <= 3 ? '#E4002B' : '#1E5BFF';
+    else if (scene.kind === 'congrats') bg = '#7B3FE4';
+    else if (scene.kind === 'top3') bg = '#E4002B';
+    else if (scene.kind === 'build') bg = scene.rank === 1 ? '#2A0E3F' : '#14213D';
+    else if (teamColor) bg = teamColor;
+    else if (scene.kind === 'finale') bg = '#FFF6DF';
+  }
+  const raysOn = started && (revealed || scene.kind === 'top3' || scene.kind === 'finale' || (scene.kind === 'count' && scene.n === 0));
+  const confettiColors = teamColor
+    ? [teamColor, accentFor(teamColor), '#FFFFFF', '#FFD400']
+    : scene.kind === 'finale'
+      ? [...[1, 2, 3].map((r) => teamColorOf(byRank.get(r)?.team)), '#FFD400', '#E4002B']
+      : ['#FFD400', '#FFFFFF', '#E4002B', '#22C3E6'];
   const dark = scene.kind === 'build' && scene.rank !== 2 && t >= scene.to - 2 * P;
-  const emblem = (size: number, opacity: number) => <Emblem size={size} opacity={opacity} spinRef={spinRef} />;
+  const emblem = (size: number, opacity: number, color = '#FFD400') => <Emblem size={size} opacity={opacity} color={color} spinRef={spinRef} />;
 
   let body: ReactNode = null;
   if (!started) {
     body = (
       <div className="cin-center">
-        {emblem(h * 0.78, 0.35)}
-        <div className="cin-caps cin-track" style={{ fontSize: h * 0.026, color: '#a9bedf' }}>
+        {emblem(h * 0.95, 1)}
+        <div className="cin-cap white cin-pop" style={{ fontSize: h * 0.036 }}>
           {eventName} presents
         </div>
-        <div style={{ height: h * 0.03 }} />
-        <Metal cls="cin-metal cin-shine cin-zoom" size={fit('The Results', w, h, 0.16)}>
-          The Results
+        <div style={{ height: h * 0.04 }} />
+        <Metal cls="cin-metal cin-zoom" size={fit('The Results!', w, h, 0.2)}>
+          The Results!
         </Metal>
-        <div style={{ height: h * 0.03 }} />
-        <div className="cin-caps cin-rise" style={{ fontSize: h * 0.022, color: '#8ea3c4', animationDelay: '.8s' }}>
+        <div style={{ height: h * 0.05 }} />
+        <div className="cin-cap red cin-rise" style={{ fontSize: h * 0.032, animationDelay: '.5s', '--tilt': '1.5deg' } as CSSProperties}>
           Project Expo 2026
         </div>
       </div>
@@ -471,10 +475,10 @@ export function BigReveal({ entries, song, times, eventName, maxPerJudge, onCham
   } else if (scene.kind === 'intro') {
     body = (
       <div className="cin-center">
-        {emblem(h * 0.8, 0.3)}
+        {emblem(h * 0.9, 1)}
         <Pulse beat={beat}>
-          <Metal cls="cin-metal cin-track" size={fit('Get ready', w, h, 0.09, 1.1)} style={{ letterSpacing: '.3em' }}>
-            Get ready
+          <Metal cls="cin-metal cin-zoom" size={fit('Get ready!', w, h, 0.14)}>
+            Get ready!
           </Metal>
         </Pulse>
       </div>
@@ -485,48 +489,59 @@ export function BigReveal({ entries, song, times, eventName, maxPerJudge, onCham
     const dur = n > 0 ? Math.max(0.6, cd[k + 1]! - cd[k]!) : 1;
     body = (
       <div className="cin-center">
-        {emblem(h * 0.8, 0.55)}
+        {emblem(h * 0.92, 1, n === 0 ? '#E4002B' : '#FFD400')}
         <div
           key={`n${n}`}
           className={`cin-num ${n === 0 ? 'zero' : ''}`}
-          style={{ position: 'relative', animationDuration: n === 0 ? undefined : `${dur}s` }}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', animationDuration: n === 0 ? undefined : `${dur}s` }}
         >
-          <Metal cls={n <= 3 ? 'cin-gold cin-shine' : 'cin-metal cin-shine'} size={h * (n === 0 ? 0.6 : 0.52)}>
+          <Metal cls={n === 0 ? 'cin-gold' : 'cin-metal'} size={h * (n === 0 ? 0.66 : 0.6)} style={{ letterSpacing: 0, paddingLeft: 0 }}>
             {String(n)}
           </Metal>
         </div>
-        {n > 0 ? <div key={`r${n}`} className="cin-ring" style={{ '--accent': n <= 3 ? '#ffbf47' : '#7fb0ff', opacity: 0.6 } as CSSProperties} /> : null}
+        {n > 0 ? <div key={`r${n}`} className="cin-ring" style={{ '--accent': n <= 3 ? '#FFD400' : '#22C3E6' } as CSSProperties} /> : null}
       </div>
     );
   } else if (scene.kind === 'congrats') {
     const s = since(times.congrats);
     body = (
       <div className="cin-center">
-        {emblem(h * 0.86, 0.3)}
+        {emblem(h * 0.95, 1)}
         <Pulse beat={Math.floor(s / 2)}>
-          <Metal cls="cin-metal cin-shine cin-zoom" size={fit('Congratulations', w, h, 0.14)}>
-            Congratulations
+          <Metal cls="cin-metal cin-zoom" size={fit('Congratulations!', w, h, 0.17)}>
+            Congratulations!
           </Metal>
         </Pulse>
-        <div style={{ height: h * 0.035 }} />
-        <Later show={s >= 1} className="cin-caps" style={{ fontSize: h * 0.042, color: '#e6edf7', letterSpacing: '.3em' }}>
+        <div style={{ height: h * 0.05 }} />
+        <Later show={s >= 1} className="cin-cap white" style={{ fontSize: h * 0.042 }}>
           to the winning teams
         </Later>
-        <Later show={s >= 5} className="cin-caps" style={{ fontSize: h * 0.034, color: '#ffd36b', marginTop: h * 0.022, letterSpacing: '.5em' }}>
+        <div style={{ height: h * 0.03 }} />
+        <Later show={s >= 5} className="cin-cap red" style={{ fontSize: h * 0.036, '--tilt': '2deg' } as CSSProperties}>
           in advance!
         </Later>
       </div>
     );
   } else if (scene.kind === 'top3') {
-    body = <TopThree since={since(times.top3)} w={w} h={h} emblem={emblem(h * 0.9, 0.22)} />;
+    body = <TopThree since={since(times.top3)} w={w} h={h} emblem={emblem(h * 0.95, 1)} />;
   } else if (scene.kind === 'build') {
     const p = clamp01((t + P - scene.from) / (scene.to - scene.from));
-    body = <Build rank={scene.rank} p={p} beat={beat} short={scene.rank === 2} w={w} h={h} emblem={emblem(h * 0.86, 0.22 + p * 0.4)} />;
+    body = (
+      <Build
+        rank={scene.rank}
+        p={p}
+        beat={beat}
+        short={scene.rank === 2}
+        w={w}
+        h={h}
+        emblem={emblem(h * 0.95, 0.12 + p * 0.3, scene.rank === 1 ? '#FFD400' : '#FFFFFF')}
+      />
+    );
   } else if (scene.kind === 'reveal') {
     body = entry ? (
       <PlaceReveal key={entry.team.id} entry={entry} since={since(scene.at)} w={w} h={h} maxPerJudge={maxPerJudge} />
     ) : (
-      <TopThree since={99} w={w} h={h} emblem={emblem(h * 0.9, 0.22)} />
+      <TopThree since={99} w={w} h={h} emblem={emblem(h * 0.95, 1)} />
     );
   } else if (scene.kind === 'finale') {
     body = <Finale byRank={byRank} w={w} h={h} />;
@@ -540,43 +555,39 @@ export function BigReveal({ entries, song, times, eventName, maxPerJudge, onCham
   return createPortal(
     <div
       ref={rootRef}
-      className={`cin-root ${wide ? 'wide' : ''}`}
-      style={{ '--lvlc': lvlColor } as CSSProperties}
+      className="cin-root"
       onClick={() => {
         if (!startedRef.current) begin();
       }}
     >
       <div className="cin-cam" ref={camRef}>
-        <div className="cin-bg" style={{ '--glow': glow } as CSSProperties} />
-        <div
-          key={backdropImg ?? 'none'}
-          className={`cin-backdrop ${backdropImg ? 'on' : ''}`}
-          style={backdropImg ? { backgroundImage: `url("${backdropImg}")` } : undefined}
-        />
-        <div className="cin-smoke">
-          <i />
-          <i />
-          <i />
-        </div>
+        <div className="cin-bg" style={{ '--glow': bg } as CSSProperties} />
         <div className={`cin-rays ${raysOn ? 'on' : ''}`} />
+        <div className="cin-halftone" />
         <div className="cin-lvl" />
-        <Embers tone={emberTone} burstRef={burstRef} />
+        <Confetti colors={confettiColors} burstRef={burstRef} />
         {body}
         <div className={`cin-dark ${dark ? 'on' : ''}`} />
-        <div className="cin-vig" />
       </div>
       <div className="cin-kick" ref={kickRef} />
       {fx.id > 0 ? (
         <div key={fx.id} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-          <div className="cin-flash" style={fx.big ? undefined : { animationDuration: '.7s', opacity: 0.6 }} />
+          <div className="cin-flash" style={fx.big ? undefined : { animationDuration: '.5s', opacity: 0.5 }} />
           <div className="cin-ring" style={{ '--accent': TONE[fx.tone] } as CSSProperties} />
-          <div className="cin-ring late" style={{ '--accent': fx.tone === 'gold' ? '#fff0c0' : '#e8f0ff' } as CSSProperties} />
-          <div className={`cin-flare ${fx.tone === 'gold' || fx.tone === 'bronze' ? 'gold' : ''}`} />
+          <div className="cin-ring late" style={{ '--accent': '#FFFFFF' } as CSSProperties} />
+          {fx.sfx ? (
+            <Sfx
+              word={fx.sfx}
+              size={h * (fx.big ? 0.4 : 0.3)}
+              x={w * (fx.id % 2 ? 0.16 : 0.84)}
+              y={h * 0.24}
+              rot={fx.id % 2 ? -10 : 9}
+              color={fx.tone === 'gold' ? '#FFD400' : fx.tone === 'bronze' ? '#FF7A1A' : fx.tone === 'silver' ? '#22C3E6' : '#E4002B'}
+            />
+          ) : null}
         </div>
       ) : null}
-      <div className="cin-grain" />
-      <div className="cin-bar top" />
-      <div className="cin-bar bot" />
+      <div className="cin-frame" />
       {hint ? <div className="cin-op">{hint}</div> : null}
     </div>,
     document.body,
@@ -594,18 +605,15 @@ function Pulse({ beat, children }: { beat: number; children: ReactNode }) {
       first.current = false;
       return;
     }
-    ref.current?.animate?.(
-      [
-        { transform: 'scale(1.05)', filter: 'brightness(1.5)' },
-        { transform: 'scale(1)', filter: 'brightness(1)' },
-      ],
-      { duration: 450, easing: 'cubic-bezier(.2,.8,.3,1)' },
-    );
+    ref.current?.animate?.([{ transform: 'scale(1.07) rotate(-1deg)' }, { transform: 'scale(1) rotate(0)' }], {
+      duration: 380,
+      easing: 'cubic-bezier(.2,1.6,.4,1)',
+    });
   }, [beat]);
   return <div ref={ref}>{children}</div>;
 }
 
-/** Holds its space, then rises in when `show` turns true. */
+/** Holds its space, then pops in when `show` turns true. */
 function Later({ show, className, style, children }: { show: boolean; className: string; style?: CSSProperties; children: ReactNode }) {
   return (
     <div className={show ? `${className} cin-rise` : className} style={show ? style : { ...style, opacity: 0 }}>
@@ -614,70 +622,63 @@ function Later({ show, className, style, children }: { show: boolean; className:
   );
 }
 
+/** Comic lettering (Bangers, ink outline, hard shadow). */
 function Metal({ cls, size, children, style }: { cls: string; size: number; children: string; style?: CSSProperties }) {
   return (
-    <div className={cls} data-text={children} style={{ fontSize: size, ...style }}>
+    <div className={cls} style={{ fontSize: size, ...style }}>
       {children}
     </div>
   );
 }
 
-/** Original Tech Arena emblem: a machined ring with tick marks. Spun by the frame loop (faster as suspense builds). */
-function Emblem({ size, opacity, spinRef }: { size: number; opacity: number; spinRef: RefObject<HTMLDivElement | null> }) {
-  const ticks = Array.from({ length: 72 }, (_, i) => i);
+function starPoints(spikes: number, outer: number, inner: number, jitter = 0): string {
+  const pts: string[] = [];
+  for (let i = 0; i < spikes * 2; i++) {
+    const a = (i / (spikes * 2)) * Math.PI * 2 - Math.PI / 2;
+    const wob = jitter ? 1 + Math.sin(i * 2.7) * jitter : 1;
+    const r = (i % 2 ? inner : outer) * wob;
+    pts.push(`${(Math.cos(a) * r).toFixed(1)},${(Math.sin(a) * r).toFixed(1)}`);
+  }
+  return pts.join(' ');
+}
+
+/** A big comic starburst behind the action. Spun by the frame loop (faster as suspense builds). */
+function Emblem({ size, opacity, color, spinRef }: { size: number; opacity: number; color: string; spinRef: RefObject<HTMLDivElement | null> }) {
   return (
-    <div
-      className="cin-emblem driven"
-      style={{ width: size, height: size, marginLeft: -size / 2, marginTop: -size / 2, opacity, transition: 'opacity 1s' }}
-    >
+    <div className="cin-emblem" style={{ width: size, height: size, marginLeft: -size / 2, marginTop: -size / 2, opacity, transition: 'opacity .6s' }}>
       <div className="spin" ref={spinRef}>
-        <svg viewBox="0 0 200 200" width={size} height={size}>
-          <defs>
-            <linearGradient id="cinRingG" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stopColor="#ffffff" />
-              <stop offset=".45" stopColor="#7d8aa0" />
-              <stop offset=".5" stopColor="#1d2430" />
-              <stop offset=".6" stopColor="#c6d0de" />
-              <stop offset="1" stopColor="#5d6a80" />
-            </linearGradient>
-          </defs>
-          <circle cx="100" cy="100" r="96" fill="none" stroke="url(#cinRingG)" strokeWidth="2.2" />
-          <circle cx="100" cy="100" r="84" fill="none" stroke="url(#cinRingG)" strokeWidth="1" opacity=".7" />
-          <circle cx="100" cy="100" r="62" fill="none" stroke="#9fb8e0" strokeWidth=".4" opacity=".5" strokeDasharray="2 3" />
-          {ticks.map((i) => {
-            const a = (i / ticks.length) * Math.PI * 2;
-            const long = i % 6 === 0;
-            const r1 = long ? 86 : 89;
-            return (
-              <line
-                key={i}
-                x1={100 + Math.cos(a) * r1}
-                y1={100 + Math.sin(a) * r1}
-                x2={100 + Math.cos(a) * 93}
-                y2={100 + Math.sin(a) * 93}
-                stroke={long ? '#e6edf7' : '#7f8ca3'}
-                strokeWidth={long ? 1.2 : 0.5}
-              />
-            );
-          })}
-          {[0, 120, 240].map((d) => (
-            <polygon key={d} points="100,6 104,15 96,15" fill="#e6edf7" transform={`rotate(${d} 100 100)`} />
-          ))}
+        <svg viewBox="-100 -100 200 200" width={size} height={size}>
+          <polygon points={starPoints(24, 98, 74)} fill={color} stroke="#111" strokeWidth="2.5" strokeLinejoin="round" />
+          <circle r="62" fill="none" stroke="#111" strokeWidth="1.6" strokeDasharray="5 6" />
         </svg>
       </div>
     </div>
   );
 }
 
-/** Suspense ring that fills up until the reveal. */
+/** "POW!"-style sound effect in a jagged burst. */
+function Sfx({ word, size, x, y, rot, color }: { word: string; size: number; x: number; y: number; rot: number; color: string }) {
+  return (
+    <div className="cin-sfx" style={{ left: x, top: y, '--s': `${size}px`, '--r': `${rot}deg` } as CSSProperties}>
+      <svg viewBox="-100 -100 200 200">
+        <polygon points={starPoints(14, 98, 62, 0.12)} fill="#111" transform="translate(5 6)" />
+        <polygon points={starPoints(14, 98, 62, 0.12)} fill={color} stroke="#111" strokeWidth="5" strokeLinejoin="round" />
+      </svg>
+      <b>{word}</b>
+    </div>
+  );
+}
+
+/** Suspense meter that fills up until the reveal. */
 function ChargeRing({ size, p, color }: { size: number; p: number; color: string }) {
-  const r = 90;
+  const r = 88;
   const c = 2 * Math.PI * r;
   const ticks = 24;
   return (
     <div className="cin-charge" style={{ width: size, height: size, marginLeft: -size / 2, marginTop: -size / 2 }}>
       <svg viewBox="0 0 200 200" width={size} height={size} style={{ transform: 'rotate(-90deg)', overflow: 'visible' }}>
-        <circle cx="100" cy="100" r={r} fill="none" stroke="rgba(255,255,255,.08)" strokeWidth="2.5" />
+        <circle cx="100" cy="100" r={r} fill="none" stroke="#111" strokeWidth="11" />
+        <circle cx="100" cy="100" r={r} fill="none" stroke="rgba(255,255,255,.15)" strokeWidth="6" />
         <circle
           className="p"
           cx="100"
@@ -685,24 +686,22 @@ function ChargeRing({ size, p, color }: { size: number; p: number; color: string
           r={r}
           fill="none"
           stroke={color}
-          strokeWidth="2.5"
-          strokeLinecap="round"
+          strokeWidth="6"
           strokeDasharray={c}
           strokeDashoffset={c * (1 - p)}
-          style={{ filter: `drop-shadow(0 0 4px ${color}) drop-shadow(0 0 12px ${color})` }}
         />
         {Array.from({ length: ticks }, (_, i) => {
           const a = (i / ticks) * Math.PI * 2;
           const on = i / ticks < p;
           return (
-            <line
+            <circle
               key={i}
-              x1={100 + Math.cos(a) * 96}
-              y1={100 + Math.sin(a) * 96}
-              x2={100 + Math.cos(a) * 101}
-              y2={100 + Math.sin(a) * 101}
-              stroke={on ? color : 'rgba(255,255,255,.15)'}
-              strokeWidth={on ? 2 : 1}
+              cx={100 + Math.cos(a) * 101}
+              cy={100 + Math.sin(a) * 101}
+              r={on ? 3.2 : 2}
+              fill={on ? color : 'rgba(255,255,255,.25)'}
+              stroke="#111"
+              strokeWidth="1.2"
             />
           );
         })}
@@ -711,14 +710,19 @@ function ChargeRing({ size, p, color }: { size: number; p: number; color: string
   );
 }
 
-const GLYPHS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#$%&@';
+const GLYPHS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789?!#$%&@';
 /** A row of scrambling letters: the name being "decoded". Changes on every beat. */
 function Cipher({ beat, n, gold }: { beat: number; n: number; gold: boolean }) {
   return (
     <div className={`cin-cipher ${gold ? 'gold' : ''}`}>
       {Array.from({ length: n }, (_, i) => {
         const x = Math.sin((beat + 7) * 12.9898 + i * 78.233) * 43758.5453;
-        return <span key={`${beat}-${i}`}>{GLYPHS[Math.floor((x - Math.floor(x)) * GLYPHS.length)]}</span>;
+        const f = x - Math.floor(x);
+        return (
+          <span key={`${beat}-${i}`} style={{ '--r': `${(f - 0.5) * 12}deg` } as CSSProperties}>
+            {GLYPHS[Math.floor(f * GLYPHS.length)]}
+          </span>
+        );
       })}
     </div>
   );
@@ -730,15 +734,15 @@ function TopThree({ since, w, h, emblem }: { since: number; w: number; h: number
     <div className="cin-center">
       {emblem}
       <Pulse beat={Math.floor(since / 2)}>
-        <div className="cin-caps cin-track" style={{ fontSize: h * 0.032, color: '#ffe3a1' }}>
+        <div className="cin-cap cin-pop" style={{ fontSize: h * 0.034 }}>
           And the
         </div>
-        <div style={{ height: h * 0.015 }} />
-        <Metal cls="cin-gold cin-shine cin-zoom" size={fit('Top 3 teams', w, h, 0.15)}>
+        <div style={{ height: h * 0.03 }} />
+        <Metal cls="cin-metal cin-zoom" size={fit('Top 3 teams', w, h, 0.17)}>
           Top 3 teams
         </Metal>
-        <div style={{ height: h * 0.012 }} />
-        <div className="cin-caps cin-rise" style={{ fontSize: h * 0.032, color: '#ffe3a1', animationDelay: '.6s' }}>
+        <div style={{ height: h * 0.03 }} />
+        <div className="cin-cap white cin-rise" style={{ fontSize: h * 0.034, animationDelay: '.5s', '--tilt': '2deg' } as CSSProperties}>
           are…
         </div>
       </Pulse>
@@ -754,7 +758,7 @@ function TopThree({ since, w, h, emblem }: { since: number; w: number; h: number
               style={{ '--s': `${size}px` } as CSSProperties}
             >
               <div className="in">
-                <Metal cls={METAL_CLASS[r]!} size={size * 0.4}>
+                <Metal cls="cin-metal" size={size * 0.42}>
                   {ROMAN[r]!}
                 </Metal>
               </div>
@@ -766,7 +770,7 @@ function TopThree({ since, w, h, emblem }: { since: number; w: number; h: number
         <div
           key={`sh${Math.min(2, Math.floor((since - 4) / 4))}`}
           className="cin-ring"
-          style={{ '--accent': since >= 12 ? '#ffc04a' : '#cfd8e6', opacity: 0.5 } as CSSProperties}
+          style={{ '--accent': since >= 12 ? '#FFD400' : '#FFFFFF' } as CSSProperties}
         />
       ) : null}
     </div>
@@ -791,41 +795,41 @@ function Build({
   emblem: ReactNode;
 }) {
   const color = MEDAL_COLOR[rank]!;
+  const q = h * 0.13;
   return (
     <div className="cin-center">
       {emblem}
-      {short ? null : <ChargeRing size={h * 0.7} p={p} color={color} />}
+      {short ? null : <ChargeRing size={h * 0.74} p={p} color={color} />}
       <div className="cin-numeral">
         <Metal cls={METAL_CLASS[rank]!} size={h * 0.95}>
           {ROMAN[rank]!}
         </Metal>
       </div>
+      {short ? null : (
+        <>
+          <div className="cin-q" style={{ left: w * 0.12, top: h * 0.2, fontSize: q }}>
+            ?
+          </div>
+          <div className="cin-q" style={{ right: w * 0.12, top: h * 0.26, fontSize: q * 1.3, animationDelay: '.4s' }}>
+            ?!
+          </div>
+          <div className="cin-q" style={{ left: w * 0.18, bottom: h * 0.16, fontSize: q * 0.9, animationDelay: '.8s' }}>
+            !?
+          </div>
+        </>
+      )}
       <Pulse beat={short ? beat : Math.floor(beat / 2)}>
-        {rank === 1 ? (
-          <>
-            <div className="cin-caps cin-track" style={{ fontSize: h * 0.034, color: '#ffe3a1' }}>
-              And the
-            </div>
-            <div style={{ height: h * 0.02 }} />
-            <Metal cls="cin-gold cin-shine cin-zoom" size={fit('Champion is', w, h, 0.15)}>
-              Champion is
-            </Metal>
-          </>
-        ) : (
-          <>
-            <div className="cin-caps cin-track" style={{ fontSize: h * 0.032, color: '#a9bedf' }}>
-              In
-            </div>
-            <div style={{ height: h * 0.02 }} />
-            <Metal cls={`${METAL_CLASS[rank]} cin-zoom`} size={fit(PLACE_WORD[rank]!, w, h, 0.14)}>
-              {PLACE_WORD[rank]!}
-            </Metal>
-          </>
-        )}
+        <div className={`cin-cap ${CAP_CLASS[rank]} cin-pop`} style={{ fontSize: h * 0.034 }}>
+          {rank === 1 ? 'And the' : 'In'}
+        </div>
+        <div style={{ height: h * 0.03 }} />
+        <Metal cls={`${METAL_CLASS[rank]} cin-zoom`} size={fit(rank === 1 ? 'Champion is…' : PLACE_WORD[rank]!, w, h, 0.16)}>
+          {rank === 1 ? 'Champion is…' : PLACE_WORD[rank]!}
+        </Metal>
       </Pulse>
       {short ? null : (
         <>
-          <div style={{ height: h * 0.055 }} />
+          <div style={{ height: h * 0.06 }} />
           <Cipher beat={beat} n={9} gold={rank === 1} />
         </>
       )}
@@ -834,24 +838,26 @@ function Build({
   );
 }
 
-interface Particle {
+interface Bit {
   x: number;
   y: number;
   vx: number;
   vy: number;
   life: number;
   max: number;
-  r: number;
-  hue: number;
-  spark: boolean;
+  size: number;
+  rot: number;
+  vr: number;
+  color: string;
+  confetti: boolean;
 }
 
-/** Floating embers, plus spark bursts on demand through `burstRef`. Additive canvas. */
-function Embers({ tone, burstRef }: { tone: 'cool' | 'warm' | 'gold'; burstRef: RefObject<((count: number, power: number) => void) | null> }) {
+/** Floating comic dots, plus confetti bursts on demand through `burstRef`. */
+function Confetti({ colors, burstRef }: { colors: string[]; burstRef: RefObject<((count: number, power: number) => void) | null> }) {
   const ref = useRef<HTMLCanvasElement | null>(null);
-  const toneRef = useRef(tone);
-  toneRef.current = tone;
-  const parts = useRef<Particle[]>([]);
+  const colorsRef = useRef(colors);
+  colorsRef.current = colors;
+  const bits = useRef<Bit[]>([]);
 
   useEffect(() => {
     const c = ref.current;
@@ -867,26 +873,29 @@ function Embers({ tone, burstRef }: { tone: 'cool' | 'warm' | 'gold'; burstRef: 
     };
     resize();
     window.addEventListener('resize', resize);
-    const hueFor = () =>
-      toneRef.current === 'cool' ? 205 + Math.random() * 25 : toneRef.current === 'gold' ? 38 + Math.random() * 12 : 18 + Math.random() * 20;
+    const pick = () => {
+      const list = colorsRef.current;
+      return list[Math.floor(Math.random() * list.length)] ?? '#FFD400';
+    };
 
     burstRef.current = (count: number, power: number) => {
       const W = c.width;
       const H = c.height;
-      const gold = toneRef.current === 'gold';
-      for (let i = 0; i < count; i++) {
+      for (let i = 0; i < Math.min(count, 360); i++) {
         const a = Math.random() * Math.PI * 2;
-        const sp = (200 + Math.random() * 700 * power) * dpr;
-        parts.current.push({
+        const sp = (250 + Math.random() * 750 * power) * dpr;
+        bits.current.push({
           x: W / 2,
-          y: H * 0.45,
+          y: H * 0.5,
           vx: Math.cos(a) * sp,
-          vy: Math.sin(a) * sp - 150 * dpr,
+          vy: Math.sin(a) * sp - 260 * dpr,
           life: 0,
-          max: 1.2 + Math.random() * 1.6,
-          r: (0.8 + Math.random() * 1.6) * dpr,
-          hue: gold ? 40 + Math.random() * 15 : toneRef.current === 'cool' ? 210 : 25 + Math.random() * 20,
-          spark: true,
+          max: 2.2 + Math.random() * 1.8,
+          size: (7 + Math.random() * 9) * dpr,
+          rot: Math.random() * Math.PI,
+          vr: (Math.random() - 0.5) * 14,
+          color: pick(),
+          confetti: true,
         });
       }
     };
@@ -896,47 +905,58 @@ function Embers({ tone, burstRef }: { tone: 'cool' | 'warm' | 'gold'; burstRef: 
       last = t;
       const W = c.width;
       const H = c.height;
-      const want = toneRef.current === 'gold' ? 200 : 120;
       let ambient = 0;
-      for (const p of parts.current) if (!p.spark) ambient++;
-      for (let i = ambient; i < want && Math.random() < 0.6; i++) {
-        parts.current.push({
+      for (const b of bits.current) if (!b.confetti) ambient++;
+      if (ambient < 22 && Math.random() < 0.08) {
+        bits.current.push({
           x: Math.random() * W,
-          y: H + 10,
-          vx: (Math.random() - 0.5) * 20,
-          vy: -(25 + Math.random() * 60) * dpr,
+          y: H + 20,
+          vx: (Math.random() - 0.5) * 16,
+          vy: -(30 + Math.random() * 45) * dpr,
           life: 0,
-          max: 6 + Math.random() * 8,
-          r: (0.6 + Math.random() * 1.8) * dpr,
-          hue: hueFor(),
-          spark: false,
+          max: 14,
+          size: (4 + Math.random() * 7) * dpr,
+          rot: 0,
+          vr: 0,
+          color: Math.random() < 0.6 ? '#FFFFFF' : '#FFD400',
+          confetti: false,
         });
       }
       ctx.clearRect(0, 0, W, H);
-      ctx.globalCompositeOperation = 'lighter';
-      parts.current = parts.current.filter((p) => {
-        p.life += dt;
-        if (p.spark) {
-          p.vy += 260 * dpr * dt;
-          p.vx *= 0.985;
-          p.vy *= 0.985;
+      ctx.lineWidth = 1.6 * dpr;
+      ctx.strokeStyle = '#111';
+      bits.current = bits.current.filter((b) => {
+        b.life += dt;
+        if (b.confetti) {
+          b.vy += 520 * dpr * dt;
+          b.vx *= 0.975;
+          b.vy *= 0.975;
+          b.rot += b.vr * dt;
         } else {
-          p.vx += Math.sin((t / 1000) * 0.8 + p.x * 0.01) * 6 * dt;
+          b.vx += Math.sin(t / 900 + b.y * 0.01) * 4 * dt;
         }
-        p.x += p.vx * dt;
-        p.y += p.vy * dt;
-        const k = 1 - p.life / p.max;
-        if (k <= 0 || p.y < -20 || p.y > H + 40) return false;
-        const a = Math.min(1, p.life * 3) * k;
-        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 4);
-        g.addColorStop(0, `hsla(${p.hue},100%,${p.spark ? 80 : 70}%,${a})`);
-        g.addColorStop(1, `hsla(${p.hue},100%,50%,0)`);
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r * 4, 0, Math.PI * 2);
-        ctx.fill();
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+        if (b.life > b.max || b.y < -40 || b.y > H + 60) return false;
+        ctx.globalAlpha = b.confetti ? Math.min(1, (b.max - b.life) * 2) : 0.7 * Math.min(1, b.life);
+        ctx.fillStyle = b.color;
+        if (b.confetti) {
+          ctx.save();
+          ctx.translate(b.x, b.y);
+          ctx.rotate(b.rot);
+          const sq = Math.abs(Math.cos(b.rot * 1.7));
+          ctx.fillRect(-b.size / 2, (-b.size / 4) * sq, b.size, (b.size / 2) * sq + 1);
+          ctx.strokeRect(-b.size / 2, (-b.size / 4) * sq, b.size, (b.size / 2) * sq + 1);
+          ctx.restore();
+        } else {
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, b.size / 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
         return true;
       });
+      ctx.globalAlpha = 1;
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -950,8 +970,8 @@ function Embers({ tone, burstRef }: { tone: 'cool' | 'warm' | 'gold'; burstRef: 
   return <canvas ref={ref} className="cin-canvas" style={{ width: '100%', height: '100%' }} />;
 }
 
-/** Largest Cinzel caps size (px) at which `text` fits 86% of width `w`, capped at `maxH` of the height. */
-function fit(text: string, w: number, h: number, maxH: number, spacing = 0.92): number {
+/** Largest Bangers size (px) at which `text` fits 86% of width `w`, capped at `maxH` of the height. */
+function fit(text: string, w: number, h: number, maxH: number, spacing = 0.56): number {
   return Math.min(h * maxH, (w * 0.86) / Math.max(4, text.length * spacing));
 }
 
@@ -964,11 +984,25 @@ function initialsOf(name: string) {
     .join('');
 }
 
-function Hero({ name, photoUrl, color, size, role }: { name: string; photoUrl: string | null; color: string; size: number; role?: string | null }) {
+function Hero({
+  name,
+  photoUrl,
+  color,
+  size,
+  role,
+  tilt = 0,
+}: {
+  name: string;
+  photoUrl: string | null;
+  color: string;
+  size: number;
+  role?: string | null;
+  tilt?: number;
+}) {
   const uri = imageUri(photoUrl);
   const [broken, setBroken] = useState(false);
   return (
-    <div className="cin-hero" style={{ '--w': `${size}px`, '--team': color } as CSSProperties}>
+    <div className="cin-hero" style={{ '--w': `${size}px`, '--team': color, '--tilt': `${tilt}deg` } as CSSProperties}>
       {uri && !broken ? (
         <img src={uri} alt={name} onError={() => setBroken(true)} />
       ) : (
@@ -976,8 +1010,7 @@ function Hero({ name, photoUrl, color, size, role }: { name: string; photoUrl: s
           <span className="cin-metal">{initialsOf(name)}</span>
         </div>
       )}
-      <div className="rim" />
-      <div className="nm">
+      <div className="nm" style={{ background: color, color: textOn(color) }}>
         {name}
         {role === 'lead' ? <span className="rl">Team lead</span> : null}
       </div>
@@ -985,18 +1018,18 @@ function Hero({ name, photoUrl, color, size, role }: { name: string; photoUrl: s
   );
 }
 
-/** The team's project photo in a glowing frame. Renders nothing if there is no photo (or it fails to load). */
+/** The team's project photo as a comic panel. Renders nothing if there is no photo (or it fails to load). */
 function ProjectShot({
   team,
   width,
-  color,
   from = 'left',
+  rot = -2,
   delay,
 }: {
   team: PublicTeam;
   width: number;
-  color: string;
   from?: 'left' | 'right';
+  rot?: number;
   delay?: string;
 }) {
   const uri = imageUri(team.imageUrl ?? team.posterUrl);
@@ -1005,7 +1038,7 @@ function ProjectShot({
   return (
     <div
       className={`cin-proj ${from === 'right' ? 'right' : ''}`}
-      style={{ '--pw': `${width}px`, '--medal': color, animationDelay: delay } as CSSProperties}
+      style={{ '--pw': `${width}px`, '--rot': `${rot}deg`, animationDelay: delay } as CSSProperties}
     >
       <img src={uri} alt={team.projectTitle} onError={() => setBroken(true)} />
     </div>
@@ -1015,66 +1048,56 @@ function ProjectShot({
 function PlaceReveal({ entry, since, w, h, maxPerJudge }: { entry: ShowEntry; since: number; w: number; h: number; maxPerJudge: number | null }) {
   const people = publicMembers(entry.team);
   const color = teamColorOf(entry.team);
-  const medal = MEDAL_COLOR[entry.rank]!;
+  const r = entry.rank;
   // Teammates land one every 2 beats, starting 2 beats after the hit.
   const shown = since >= 2 ? Math.floor((since - 2) / 2) + 1 : 0;
   const n = Math.max(1, people.length);
-  const card = Math.min(w * 0.14, (w * 0.86) / n - w * 0.018, (h * 0.28) / 1.36);
+  const card = Math.min(w * 0.13, (w * 0.86) / n - w * 0.022, (h * 0.25) / 1.3);
   const hasShot = !!(entry.team.imageUrl ?? entry.team.posterUrl);
-  const shotW = Math.min(w * 0.3, h * 0.3 * 1.6);
+  const shotW = Math.min(w * 0.3, h * 0.27 * 1.6);
   return (
-    <div className="cin-center" style={{ justifyContent: 'flex-start', paddingTop: h * 0.09 }}>
-      <div className="cin-rule cin-caps cin-rise" style={{ fontSize: h * 0.026, color: medal }}>
-        {PLACE_WORD[entry.rank]}
+    <div className="cin-center" style={{ justifyContent: 'flex-start', paddingTop: h * 0.075 }}>
+      <div className={`cin-cap ${CAP_CLASS[r]} cin-pop`} style={{ fontSize: h * 0.032 }}>
+        {ORDINAL[r]}!
       </div>
-      <div style={{ height: h * 0.02 }} />
+      <div style={{ height: h * 0.025 }} />
       <div className="cin-slam">
-        <Metal cls={`${METAL_CLASS[entry.rank]} cin-shine`} size={fit(entry.team.name, w, h, entry.rank === 1 ? 0.14 : 0.13)}>
+        <Metal cls="cin-metal" size={fit(entry.team.name, w, h, 0.13)} style={{ color: nameFill(color) }}>
           {entry.team.name}
         </Metal>
       </div>
-      <div style={{ height: h * 0.028 }} />
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: w * 0.03, maxWidth: w * 0.9 }}>
-        {hasShot ? <ProjectShot team={entry.team} width={shotW} color={medal} delay=".3s" /> : null}
+      <div style={{ height: h * 0.035 }} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: w * 0.035, maxWidth: w * 0.9 }}>
+        {hasShot ? <ProjectShot team={entry.team} width={shotW} delay=".25s" /> : null}
         <div
           style={{
             display: 'flex',
             flexDirection: 'column',
             alignItems: hasShot ? 'flex-start' : 'center',
-            textAlign: hasShot ? 'left' : 'center',
+            gap: h * 0.022,
             maxWidth: hasShot ? w * 0.42 : w * 0.8,
           }}
         >
-          {hasShot ? (
-            <div className="cin-caps cin-rise" style={{ fontSize: h * 0.017, color: medal, letterSpacing: '.5em', animationDelay: '.45s' }}>
-              The project
-            </div>
-          ) : null}
+          <div className="cin-cap red cin-rise" style={{ fontSize: h * 0.02, animationDelay: '.4s', '--tilt': '-2deg' } as CSSProperties}>
+            The project
+          </div>
           <div
-            className="cin-caps cin-rise"
-            style={{
-              fontSize: h * (hasShot ? 0.034 : 0.026),
-              lineHeight: 1.25,
-              letterSpacing: '.12em',
-              color: '#eef3fa',
-              fontWeight: 500,
-              marginTop: h * 0.01,
-              animationDelay: '.55s',
-            }}
+            className="cin-cap white cin-rise"
+            style={{ fontSize: h * 0.032, letterSpacing: '.04em', textAlign: hasShot ? 'left' : 'center', animationDelay: '.55s', '--tilt': '1deg' } as CSSProperties}
           >
             {entry.team.projectTitle}
           </div>
-          <div className="cin-caps cin-rise" style={{ fontSize: h * 0.022, color: medal, marginTop: h * 0.018, animationDelay: '.8s' }}>
+          <div className="cin-cap cin-rise" style={{ fontSize: h * 0.026, animationDelay: '.75s', '--tilt': '-1deg' } as CSSProperties}>
             Score {formatAverage(entry.average)}
             {maxPerJudge ? ` / ${maxPerJudge}` : ''}
           </div>
         </div>
       </div>
       <div style={{ flex: 1 }} />
-      <div className="cin-heroes" style={{ marginBottom: h * 0.085 }}>
+      <div className="cin-heroes" style={{ marginBottom: h * 0.075 }}>
         {people.map((p, i) =>
           i < shown ? (
-            <Hero key={`${p.name}-${i}`} name={p.name} photoUrl={p.photoUrl} color={color} size={card} role={p.role} />
+            <Hero key={`${p.name}-${i}`} name={p.name} photoUrl={p.photoUrl} color={color} size={card} role={p.role} tilt={i % 2 ? 2.5 : -2.5} />
           ) : (
             <div key={`${p.name}-${i}`} className="cin-hero ghost" style={{ '--w': `${card}px` } as CSSProperties} />
           ),
@@ -1086,48 +1109,45 @@ function PlaceReveal({ entry, since, w, h, maxPerJudge }: { entry: ShowEntry; si
 
 function Finale({ byRank, w, h }: { byRank: Map<number, ShowEntry>; w: number; h: number }) {
   const order = [2, 1, 3].map((r) => byRank.get(r)).filter((e): e is ShowEntry => !!e);
-  const colW = w * 0.3;
+  const colW = w * 0.29;
   return (
-    <div className="cin-center" style={{ justifyContent: 'flex-start', paddingTop: h * 0.085 }}>
-      <Metal cls="cin-gold cin-shine cin-zoom" size={fit('Champions', w, h, 0.11)}>
-        Champions
+    <div className="cin-center" style={{ justifyContent: 'flex-start', paddingTop: h * 0.065 }}>
+      <Metal cls="cin-gold cin-zoom" size={fit('Champions!', w, h, 0.115)}>
+        Champions!
       </Metal>
-      <div className="cin-caps cin-rise" style={{ fontSize: h * 0.019, color: '#ffe3a1', marginTop: h * 0.012, animationDelay: '.5s' }}>
+      <div className="cin-cap red cin-rise" style={{ fontSize: h * 0.02, marginTop: h * 0.012, animationDelay: '.4s' }}>
         Tech Arena · Project Expo 2026
       </div>
       <div style={{ flex: 1 }} />
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: w * 0.02, marginBottom: h * 0.105 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: w * 0.025, marginBottom: h * 0.075 }}>
         {order.map((e, i) => {
           const people = publicMembers(e.team);
           const big = e.rank === 1;
-          const card = Math.min((colW * (big ? 1 : 0.92)) / Math.max(1, people.length) - 8, h * (big ? 0.13 : 0.11));
+          const color = teamColorOf(e.team);
+          const inner = colW - w * 0.024;
+          const card = Math.min(inner / Math.max(1, people.length) - 12, h * (big ? 0.125 : 0.11));
+          const tilt = i === 0 ? -1.5 : i === 2 ? 1.5 : 0;
           return (
-            <div
-              key={e.team.id}
-              className="cin-rise"
-              style={{ width: colW, display: 'flex', flexDirection: 'column', alignItems: 'center', animationDelay: `${0.4 + i * 0.35}s` }}
-            >
-              <div className="cin-caps" style={{ fontSize: h * 0.018, color: MEDAL_COLOR[e.rank], marginBottom: h * 0.012 }}>
-                {PLACE_WORD[e.rank]}
-              </div>
-              <ProjectShot
-                team={e.team}
-                width={colW * (big ? 0.7 : 0.58)}
-                color={MEDAL_COLOR[e.rank]!}
-                from={i === 0 ? 'left' : 'right'}
-                delay={`${0.5 + i * 0.35}s`}
-              />
-              <div style={{ height: h * 0.018 }} />
-              <Metal
-                cls={`${METAL_CLASS[e.rank]} cin-shine`}
-                size={Math.min(h * (big ? 0.06 : 0.045), (colW * 0.95) / Math.max(4, e.team.name.length * 0.8))}
-              >
-                {e.team.name}
-              </Metal>
-              <div className="cin-heroes" style={{ gap: 8, marginTop: h * 0.02 }}>
-                {people.map((p, j) => (
-                  <Hero key={`${p.name}-${j}`} name={p.name.split(' ')[0] ?? p.name} photoUrl={p.photoUrl} color={teamColorOf(e.team)} size={card} />
-                ))}
+            <div key={e.team.id} className="cin-rise" style={{ width: colW, animationDelay: `${0.3 + i * 0.3}s` }}>
+              <div className="cin-tpanel" style={{ '--team': color, '--tilt': `${tilt}deg` } as CSSProperties}>
+                <div className={`cin-cap ${CAP_CLASS[e.rank]}`} style={{ fontSize: h * (big ? 0.026 : 0.022) }}>
+                  {ORDINAL[e.rank]}
+                </div>
+                <div style={{ height: h * 0.02 }} />
+                <ProjectShot team={e.team} width={inner * (big ? 0.78 : 0.7)} rot={i === 0 ? -2 : 2} from={i === 0 ? 'left' : 'right'} delay={`${0.4 + i * 0.3}s`} />
+                <div style={{ height: h * 0.022 }} />
+                <Metal
+                  cls="cin-metal"
+                  size={Math.min(h * (big ? 0.065 : 0.05), (inner * 0.95) / Math.max(4, e.team.name.length * 0.56))}
+                  style={{ color: nameFill(color) }}
+                >
+                  {e.team.name}
+                </Metal>
+                <div className="cin-heroes" style={{ gap: 10, marginTop: h * 0.022 }}>
+                  {people.map((p, j) => (
+                    <Hero key={`${p.name}-${j}`} name={p.name.split(' ')[0] ?? p.name} photoUrl={p.photoUrl} color={color} size={card} tilt={j % 2 ? 2 : -2} />
+                  ))}
+                </div>
               </div>
             </div>
           );

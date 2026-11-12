@@ -31,12 +31,12 @@ const MOMENT_HINT: Record<MomentKey, string> = {
   zero: '0 slams in with a flash and a burst of sparks.',
   congrats: '"Congratulations to the winning teams, in advance!"',
   top3: '"And the top 3 teams are…" while three shields (III, II, I) light up.',
-  build3: 'Suspense: a charging ring, scrambling letters and a spinning emblem that speeds up. Lights dim just before the hit.',
-  third: '3rd place slams in with the project photo; teammate photos land every 2 beats.',
+  build3: 'Suspense: a charging ring, scrambling letters and a spinning starburst that speeds up. Lights dim just before the hit.',
+  third: '3rd place slams in (POW!) in the team\'s own colour with the project photo; teammate photos land every 2 beats.',
   second: 'A short "In second place…" teaser plays 2 seconds before this.',
   build1: 'Suspense for the champion, in gold. Lights dim just before the hit.',
   first: 'The champion. Results publish to every phone at this moment (if ticked below).',
-  finale: 'All 3 winners with their project photos and teammates until the song ends.',
+  finale: 'All 3 winners, each in their team colour with project photo and teammates, until the song ends.',
 };
 
 const MYSTERY_COLORS = ['#7B3FE4', '#1E5BFF', '#E4002B'];
@@ -293,8 +293,8 @@ function RevealSetup() {
       <SectionTitle title="Timeline" />
       <Card>
         <AppText color="textSecondary">
-          Times are in seconds from the start of the song. They are already tuned to your song: every moment sits on a beat and
-          on a big hit. To change one, type the seconds, or play the song and press Now at the right moment.
+          Times are in seconds from the start of the song. They are already tuned to your song: every moment sits on the beat
+          nearest the time you asked for. To change one, type the seconds, or play the song and press Now at the right moment.
         </AppText>
         {MOMENTS.map((k) => (
           <MomentRow

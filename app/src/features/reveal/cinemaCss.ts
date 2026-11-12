@@ -1,171 +1,151 @@
-/** Styles for the cinematic big-screen reveal (web only). Injected once into <head>. */
+/**
+ * Styles for the big-screen reveal (web only), in the app's comic book look: flat primary colours, thick black
+ * ink, hard offset shadows, halftone dots, speed lines and POW bursts. Injected once into <head>.
+ */
 export const CINEMA_CSS = `
-.cin-root{position:fixed;inset:0;z-index:2147483000;background:#010205;overflow:hidden;cursor:none;color:#fff;
-  font-family:'Oswald',Impact,'Arial Narrow',sans-serif;user-select:none;-webkit-font-smoothing:antialiased}
+.cin-root{position:fixed;inset:0;z-index:2147483000;background:#111;overflow:hidden;cursor:none;color:#111;--lvl:0;
+  font-family:'SpaceGrotesk_700Bold','Space Grotesk',Arial,sans-serif;user-select:none;-webkit-font-smoothing:antialiased}
 .cin-cam{position:absolute;inset:0}
-.cin-cam.shake{animation:cinShake .7s cubic-bezier(.36,.07,.19,.97)}
-@keyframes cinShake{10%,90%{transform:translate3d(-3px,2px,0)}20%,80%{transform:translate3d(7px,-5px,0)}
-  30%,50%,70%{transform:translate3d(-12px,7px,0) scale(1.015)}40%,60%{transform:translate3d(12px,-7px,0) scale(1.015)}}
 
-/* Backdrop: deep space blue, glow in the team colour, drifting smoke, project image ken-burns */
-.cin-bg{position:absolute;inset:0;background:
-  radial-gradient(ellipse 60% 45% at 50% 52%,var(--glow,#0d2a66) 0%,transparent 70%),
-  radial-gradient(ellipse 120% 60% at 50% 115%,#0a1430 0%,transparent 65%),#010205;transition:background 1.4s ease}
-.cin-backdrop{position:absolute;inset:-6%;background-size:cover;background-position:center;filter:blur(14px) brightness(.32) saturate(1.2);
-  animation:cinKen 22s linear both;opacity:0;transition:opacity 1.5s ease}
-.cin-backdrop.on{opacity:1}
-@keyframes cinKen{from{transform:scale(1.05)}to{transform:scale(1.22) translate(-1.5%,-1%)}}
-.cin-smoke{position:absolute;inset:0;pointer-events:none;mix-blend-mode:screen}
-.cin-smoke i{position:absolute;width:80vmax;height:80vmax;border-radius:50%;
-  background:radial-gradient(circle,rgba(150,170,210,.11) 0%,rgba(150,170,210,.04) 35%,transparent 62%);filter:blur(24px)}
-.cin-smoke i:nth-child(1){left:-30vmax;top:-10vmax;animation:cinDriftA 46s ease-in-out infinite}
-.cin-smoke i:nth-child(2){right:-35vmax;top:5vmax;animation:cinDriftB 52s ease-in-out infinite}
-.cin-smoke i:nth-child(3){left:10vmax;bottom:-45vmax;animation:cinDriftA 60s ease-in-out infinite reverse}
-@keyframes cinDriftA{0%,100%{transform:translate(0,0) rotate(0)}50%{transform:translate(18vmax,-6vmax) rotate(160deg)}}
-@keyframes cinDriftB{0%,100%{transform:translate(0,0) rotate(0)}50%{transform:translate(-16vmax,8vmax) rotate(-140deg)}}
-.cin-rays{position:absolute;left:50%;top:50%;width:220vmax;height:220vmax;margin:-110vmax 0 0 -110vmax;pointer-events:none;
-  background:repeating-conic-gradient(from 0deg,rgba(255,236,190,.09) 0deg 2.2deg,transparent 2.2deg 11deg);
-  -webkit-mask-image:radial-gradient(circle,#000 0%,rgba(0,0,0,.6) 18%,transparent 48%);mask-image:radial-gradient(circle,#000 0%,rgba(0,0,0,.6) 18%,transparent 48%);
-  animation:cinSpin 90s linear infinite;opacity:0;transition:opacity 1.6s ease;mix-blend-mode:screen}
-.cin-rays.on{opacity:1}
+/* Flat comic colour field (lighter in the middle), halftone dots towards the edges, speed lines */
+.cin-bg{position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,rgba(255,255,255,.34) 0%,rgba(255,255,255,0) 58%),var(--glow,#1E5BFF)}
+.cin-halftone{position:absolute;inset:0;pointer-events:none;
+  background-image:radial-gradient(circle,rgba(0,0,0,.3) 30%,transparent 33%);background-size:2.1vmin 2.1vmin;
+  -webkit-mask-image:radial-gradient(ellipse at center,transparent 22%,#000 88%);mask-image:radial-gradient(ellipse at center,transparent 22%,#000 88%)}
+.cin-rays{position:absolute;left:50%;top:50%;width:260vmax;height:260vmax;margin:-130vmax 0 0 -130vmax;pointer-events:none;
+  background:repeating-conic-gradient(from 0deg,rgba(255,255,255,.6) 0deg .8deg,transparent .8deg 4.6deg,rgba(0,0,0,.3) 4.6deg 5.3deg,transparent 5.3deg 9deg);
+  -webkit-mask-image:radial-gradient(circle,transparent 7%,#000 26%);mask-image:radial-gradient(circle,transparent 7%,#000 26%);
+  opacity:.28;transition:opacity .5s;animation:cinSpin 160s linear infinite}
+.cin-rays.on{opacity:.85}
 @keyframes cinSpin{to{transform:rotate(360deg)}}
-.cin-vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 40%,rgba(0,0,0,.55) 75%,rgba(0,0,0,.92) 100%)}
-.cin-grain{position:absolute;inset:-50%;pointer-events:none;opacity:.07;mix-blend-mode:overlay;animation:cinGrain .5s steps(4) infinite;
-  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")}
-@keyframes cinGrain{0%{transform:translate(0,0)}25%{transform:translate(-3%,2%)}50%{transform:translate(2%,-3%)}75%{transform:translate(-2%,-1%)}100%{transform:translate(1%,3%)}}
-.cin-bar{position:absolute;left:0;right:0;height:12.5vh;background:#000;z-index:20;transition:height 1.4s cubic-bezier(.7,0,.2,1)}
-.cin-bar.top{top:0}.cin-bar.bot{bottom:0}
-.cin-root.wide .cin-bar{height:7vh}
+.cin-lvl{position:absolute;inset:0;pointer-events:none;opacity:calc(var(--lvl) * .5);
+  background:radial-gradient(circle at 50% 50%,rgba(255,255,255,.75) 0%,transparent 55%)}
+.cin-kick{position:absolute;inset:0;pointer-events:none;z-index:24;opacity:0;
+  background:radial-gradient(circle at 50% 50%,rgba(255,255,255,.8) 0%,transparent 62%)}
+/* Comic page frame: ink, paper gutter, ink */
+.cin-frame{position:absolute;inset:0;pointer-events:none;z-index:35;
+  box-shadow:inset 0 0 0 1.1vh #111,inset 0 0 0 2vh #FFF6DF,inset 0 0 0 2.6vh #111}
 .cin-canvas{position:absolute;inset:0;pointer-events:none}
 
-/* Hit effects */
-.cin-flash{position:absolute;inset:0;background:radial-gradient(circle,#fff 0%,#e8f1ff 40%,#bcd3ff 100%);pointer-events:none;z-index:30;animation:cinFlash 1s ease-out forwards}
+/* Hits: white flash, ink shockwave ring, POW burst */
+.cin-flash{position:absolute;inset:0;background:#fff;pointer-events:none;z-index:30;animation:cinFlash .8s ease-out forwards}
 @keyframes cinFlash{0%{opacity:.95}100%{opacity:0}}
-.cin-ring{position:absolute;left:50%;top:50%;width:24vmin;height:24vmin;margin:-12vmin 0 0 -12vmin;border-radius:50%;pointer-events:none;z-index:25;
-  border:2px solid var(--accent,#9cc4ff);box-shadow:0 0 30px var(--accent,#9cc4ff),inset 0 0 30px var(--accent,#9cc4ff);animation:cinRing 1.4s cubic-bezier(.1,.7,.3,1) forwards}
+.cin-ring{position:absolute;left:50%;top:50%;width:22vmin;height:22vmin;margin:-11vmin 0 0 -11vmin;border-radius:50%;pointer-events:none;z-index:25;
+  border:1.1vmin solid #111;box-shadow:0 0 0 .8vmin var(--accent,#FFD400),inset 0 0 0 .8vmin var(--accent,#FFD400);
+  animation:cinRing 1.1s cubic-bezier(.1,.7,.3,1) forwards}
 .cin-ring.late{animation-delay:.12s;opacity:0}
-@keyframes cinRing{0%{transform:scale(.15);opacity:1}100%{transform:scale(9);opacity:0}}
-.cin-flare{position:absolute;top:50%;left:-70%;width:70%;height:3px;margin-top:-1.5px;pointer-events:none;z-index:26;
-  background:linear-gradient(90deg,transparent,rgba(120,180,255,.7) 30%,#fff 50%,rgba(120,180,255,.7) 70%,transparent);
-  box-shadow:0 0 24px 6px rgba(110,170,255,.55),0 0 90px 20px rgba(80,140,255,.25);animation:cinFlare 1.8s cubic-bezier(.4,0,.2,1) forwards}
-.cin-flare.gold{background:linear-gradient(90deg,transparent,rgba(255,200,90,.8) 30%,#fff 50%,rgba(255,200,90,.8) 70%,transparent);
-  box-shadow:0 0 24px 6px rgba(255,190,70,.6),0 0 90px 20px rgba(255,170,40,.3)}
-@keyframes cinFlare{0%{left:-70%;opacity:0}15%{opacity:1}100%{left:110%;opacity:0}}
+.cin-ring.soft{animation-duration:.9s;border-width:.6vmin;box-shadow:0 0 0 .4vmin var(--accent,#FFD400)}
+@keyframes cinRing{0%{transform:scale(.2);opacity:1}100%{transform:scale(8);opacity:0}}
+.cin-sfx{position:absolute;z-index:31;pointer-events:none;width:var(--s);height:var(--s);margin:calc(var(--s) * -.5) 0 0 calc(var(--s) * -.5);
+  display:flex;align-items:center;justify-content:center;animation:cinSfx 1.6s cubic-bezier(.2,1.4,.4,1) forwards}
+.cin-sfx svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.cin-sfx b{position:relative;font-family:'Bangers_400Regular','Bangers',Impact,sans-serif;font-weight:400;font-size:calc(var(--s) * .24);
+  letter-spacing:.04em;color:#fff;-webkit-text-stroke:.08em #111;paint-order:stroke fill;text-shadow:.07em .08em 0 #111;transform:rotate(var(--r))}
+@keyframes cinSfx{0%{transform:scale(0) rotate(-40deg);opacity:1}22%{transform:scale(1.18) rotate(0)}34%{transform:scale(1)}
+  78%{transform:scale(1.04);opacity:1}100%{transform:scale(1.1);opacity:0}}
 
-/* Metal lettering */
-.cin-metal,.cin-gold,.cin-bronze,.cin-silver{font-family:'Cinzel','Trajan Pro',Georgia,serif;font-weight:900;letter-spacing:.05em;line-height:1;
-  -webkit-background-clip:text;background-clip:text;color:transparent;position:relative;display:inline-block;text-transform:uppercase}
-.cin-metal,.cin-silver{background-image:linear-gradient(180deg,#fff 0%,#e3e9f1 28%,#97a3b5 47%,#2d3542 50%,#aab5c4 55%,#f3f6fa 74%,#8692a4 100%);
-  filter:drop-shadow(0 .04em 0 #0d1118) drop-shadow(0 0 .35em rgba(120,170,255,.35))}
-.cin-gold{background-image:linear-gradient(180deg,#fffbe6 0%,#ffe08a 25%,#d29a1c 46%,#5c3700 50%,#e0a92e 56%,#fff0b3 74%,#b07a0e 100%);
-  filter:drop-shadow(0 .04em 0 #1d1200) drop-shadow(0 0 .4em rgba(255,180,40,.45))}
-.cin-bronze{background-image:linear-gradient(180deg,#fff0e2 0%,#f0b182 25%,#b8642c 46%,#3e1a05 50%,#c9773f 56%,#ffd3ae 74%,#8f4a1d 100%);
-  filter:drop-shadow(0 .04em 0 #1a0a02) drop-shadow(0 0 .4em rgba(230,120,50,.4))}
-.cin-shine::after{content:attr(data-text);position:absolute;inset:0;-webkit-background-clip:text;background-clip:text;color:transparent;
-  background-image:linear-gradient(105deg,transparent 42%,rgba(255,255,255,.95) 50%,transparent 58%);background-size:300% 100%;
-  animation:cinShine 3.2s ease-in-out infinite;filter:none}
-@keyframes cinShine{0%{background-position:120% 0}60%,100%{background-position:-60% 0}}
+/* Comic lettering: Bangers, thick ink outline, hard offset shadow */
+.cin-metal,.cin-gold,.cin-bronze,.cin-silver{font-family:'Bangers_400Regular','Bangers',Impact,sans-serif;font-weight:400;letter-spacing:.045em;
+  line-height:.98;text-transform:uppercase;display:inline-block;position:relative;color:#fff;
+  padding-left:.045em;/* balances the trailing letter-spacing so text sits dead centre */
+  -webkit-text-stroke:.075em #111;paint-order:stroke fill;text-shadow:.055em .065em 0 #111,.085em .1em 0 #111}
+.cin-gold{color:#FFD400}
+.cin-bronze{color:#FF7A1A}
+.cin-silver,.cin-metal{color:#fff}
 
-.cin-caps{font-family:'Oswald',Impact,sans-serif;text-transform:uppercase;letter-spacing:.42em;font-weight:500}
-.cin-rule{display:flex;align-items:center;gap:2.2vw;justify-content:center}
-.cin-rule:before,.cin-rule:after{content:'';height:1px;width:12vw;background:linear-gradient(90deg,transparent,currentColor,transparent)}
+/* Caption boxes */
+.cin-cap{display:inline-block;padding-left:calc(1.6vh + .12em) !important;background:#FFD400;color:#111;border:.42vh solid #111;box-shadow:.7vh .7vh 0 #111;padding:.5vh 1.6vh .6vh;
+  font-family:'SpaceGrotesk_700Bold','Space Grotesk',Arial,sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.12em;
+  line-height:1.15;transform:rotate(var(--tilt,-1.5deg))}
+.cin-cap.white{background:#fff}
+.cin-cap.red{background:#E4002B;color:#fff}
+.cin-cap.blue{background:#1E5BFF;color:#fff}
+.cin-cap.orange{background:#FF7A1A}
 
-/* Entrances */
-.cin-zoom{animation:cinZoom 1.3s cubic-bezier(.16,1,.3,1) both}
-@keyframes cinZoom{0%{transform:scale(2.4);filter:blur(16px);opacity:0}100%{transform:scale(1);filter:blur(0);opacity:1}}
-.cin-slam{animation:cinSlam .9s cubic-bezier(.2,1.3,.4,1) both}
-@keyframes cinSlam{0%{transform:scale(3.2);filter:blur(20px);opacity:0}55%{opacity:1;filter:blur(0)}100%{transform:scale(1)}}
-.cin-push{animation:cinPush 12s linear both}
-@keyframes cinPush{from{transform:scale(1)}to{transform:scale(1.1)}}
-.cin-rise{animation:cinRise 1.1s cubic-bezier(.16,1,.3,1) both}
-@keyframes cinRise{0%{transform:translateY(5vh);filter:blur(10px);opacity:0}100%{transform:none;filter:blur(0);opacity:1}}
-.cin-track{animation:cinTrack 3.5s cubic-bezier(.16,1,.3,1) both}
-@keyframes cinTrack{0%{letter-spacing:1.4em;opacity:0;filter:blur(8px)}100%{opacity:1;filter:blur(0)}}
-.cin-pulse{animation:cinPulse .5s ease-out}
-@keyframes cinPulse{0%{transform:scale(1.06);filter:brightness(1.6)}100%{transform:scale(1);filter:brightness(1)}}
-.cin-fadeout{animation:cinOut .8s ease forwards}
-@keyframes cinOut{to{opacity:0}}
+/* Entrances (comic pops, no blur) */
+.cin-zoom{animation:cinZoom .8s cubic-bezier(.2,1.5,.4,1) both}
+@keyframes cinZoom{0%{transform:scale(0) rotate(-14deg);opacity:0}60%{transform:scale(1.1) rotate(2deg);opacity:1}100%{transform:none}}
+.cin-slam{animation:cinSlam .75s cubic-bezier(.2,1.3,.4,1) both}
+@keyframes cinSlam{0%{transform:scale(3.4) rotate(6deg);opacity:0}45%{transform:scale(.9);opacity:1}70%{transform:scale(1.06)}100%{transform:none}}
+.cin-rise{animation:cinRise .7s cubic-bezier(.2,1.4,.4,1) both}
+@keyframes cinRise{0%{transform:translateY(6vh) scale(.7);opacity:0}100%{transform:none;opacity:1}}
+.cin-pop{animation:cinPop .6s cubic-bezier(.2,1.6,.4,1) both}
+@keyframes cinPop{0%{transform:scale(0) rotate(-20deg);opacity:0}100%{transform:none;opacity:1}}
+.cin-wobble{animation:cinWobble 1.6s ease-in-out infinite}
+@keyframes cinWobble{0%,100%{transform:rotate(-2deg)}50%{transform:rotate(2deg)}}
 
 /* Countdown */
-.cin-num{font-size:52vh;animation:cinNum 1s linear both}
-@keyframes cinNum{0%{transform:scale(1.9);filter:blur(16px);opacity:0}14%{transform:scale(1);filter:blur(0);opacity:1}
-  80%{transform:scale(.9);opacity:1}100%{transform:scale(.82);opacity:0;filter:blur(6px)}}
-.cin-num.zero{animation:cinSlam .9s cubic-bezier(.2,1.3,.4,1) both}
+.cin-num{animation:cinNum 1s linear both}
+@keyframes cinNum{0%{transform:scale(2.3) rotate(-10deg);opacity:0}10%{transform:scale(.94) rotate(3deg);opacity:1}18%{transform:scale(1) rotate(0)}
+  84%{transform:scale(1.03);opacity:1}100%{transform:scale(.55) rotate(8deg);opacity:0}}
+.cin-num.zero{animation:cinSlam .75s cubic-bezier(.2,1.3,.4,1) both}
 .cin-emblem{position:absolute;left:50%;top:50%;pointer-events:none}
-.cin-emblem svg{animation:cinSpin 40s linear infinite}
-.cin-emblem.fast svg{animation-duration:8s}
-
-/* Hero cards (teammates) */
-.cin-heroes{display:flex;justify-content:center;align-items:flex-end;gap:1.8vw;perspective:1200px}
-.cin-hero{position:relative;width:var(--w);height:calc(var(--w) * 1.36);border-radius:.5vw;overflow:hidden;background:#070b14;
-  box-shadow:0 0 0 1px rgba(255,255,255,.22),0 0 0 .25vw rgba(0,0,0,.6),0 3vh 6vh rgba(0,0,0,.85),0 0 4vh var(--team);
-  animation:cinHero 1s cubic-bezier(.16,1,.3,1) both}
-.cin-hero.ghost{visibility:hidden;animation:none}
-@keyframes cinHero{0%{transform:translateY(9vh) rotateX(28deg) scale(.86);filter:blur(12px) brightness(3);opacity:0}
-  35%{opacity:1;filter:blur(0) brightness(1.8)}100%{transform:none;filter:none;opacity:1}}
-.cin-hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 22%;filter:contrast(1.08) saturate(1.05)}
-.cin-hero .ini{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:calc(var(--w) * .38);
-  background:radial-gradient(circle at 50% 35%,#24324f,#070b14 70%)}
-.cin-hero .rim{position:absolute;inset:0;box-shadow:inset 0 0 2.2vw var(--team),inset 0 -14vh 8vh -4vh rgba(0,0,0,.95)}
-.cin-hero .nm{position:absolute;left:0;right:0;bottom:1.2vh;text-align:center;font-family:'Oswald',Impact,sans-serif;font-weight:700;
-  text-transform:uppercase;letter-spacing:.14em;font-size:calc(var(--w) * .095);line-height:1.15;padding:0 .6vw;text-shadow:0 2px 8px #000}
-.cin-hero .rl{display:block;font-weight:400;letter-spacing:.3em;font-size:.62em;opacity:.75}
-.cin-hero:after{content:'';position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.55) 48%,transparent 62%);
-  transform:translateX(-120%);animation:cinGlint 1.4s .25s ease-out forwards}
-@keyframes cinGlint{to{transform:translateX(120%)}}
-
-/* Music-reactive layers: --lvl (0..1) is written every frame from the song's bass */
-.cin-root{--lvl:0}
-.cin-lvl{position:absolute;inset:0;pointer-events:none;opacity:calc(var(--lvl) * .7);mix-blend-mode:screen;
-  background:radial-gradient(ellipse 65% 50% at 50% 50%,var(--lvlc,rgba(110,160,255,.55)) 0%,transparent 70%)}
-.cin-kick{position:absolute;inset:0;pointer-events:none;z-index:24;opacity:0;mix-blend-mode:screen;
-  background:radial-gradient(ellipse 60% 48% at 50% 50%,var(--lvlc,rgba(140,185,255,.6)) 0%,transparent 72%)}
-.cin-emblem.driven svg{animation:none}
 .cin-emblem .spin{width:100%;height:100%;will-change:transform}
 
-/* Suspense: charge ring, huge faint numeral, cipher glyphs, blackout before the hit */
+/* Suspense */
 .cin-charge{position:absolute;left:50%;top:50%;pointer-events:none}
 .cin-charge .p{transition:stroke-dashoffset .5s linear}
-.cin-numeral{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);opacity:.09;pointer-events:none;white-space:nowrap}
-.cin-cipher{display:flex;gap:.7vw;justify-content:center}
-.cin-cipher span{width:3.2vw;height:4.4vw;display:flex;align-items:center;justify-content:center;border:1px solid rgba(160,190,240,.35);
-  background:rgba(8,16,34,.6);font-family:'Cinzel',serif;font-weight:900;font-size:2.3vw;color:#a9c2ea;text-shadow:0 0 12px #5f8fff;
-  animation:cinGlyph .45s steps(3) both}
-.cin-cipher.gold span{border-color:rgba(255,210,120,.4);color:#ffe2a0;text-shadow:0 0 12px #ffae2a}
-@keyframes cinGlyph{0%{opacity:.15;transform:translateY(-.4vw)}60%{opacity:1}100%{opacity:.8;transform:none}}
-.cin-dark{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;z-index:15;transition:opacity .5s ease-in}
-.cin-dark.on{opacity:.86}
-.cin-ring.soft{opacity:.45;animation-duration:1.1s}
+.cin-numeral{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);opacity:.16;pointer-events:none;white-space:nowrap}
+.cin-cipher{display:flex;gap:.8vw;justify-content:center}
+.cin-cipher span{width:3.6vw;height:4.6vw;display:flex;align-items:center;justify-content:center;background:#fff;border:.4vh solid #111;
+  box-shadow:.5vh .5vh 0 #111;font-family:'Bangers_400Regular','Bangers',Impact,sans-serif;font-size:3.2vw;color:#111;
+  transform:rotate(var(--r,0deg));animation:cinGlyph .35s cubic-bezier(.2,1.6,.4,1) both}
+.cin-cipher.gold span{background:#FFD400}
+@keyframes cinGlyph{0%{transform:scale(.4) rotate(var(--r,0deg));opacity:.3}100%{transform:rotate(var(--r,0deg));opacity:1}}
+.cin-dark{position:absolute;inset:0;background:#111;opacity:0;pointer-events:none;z-index:15;transition:opacity .45s ease-in}
+.cin-dark.on{opacity:.82}
+.cin-q{position:absolute;font-family:'Bangers_400Regular','Bangers',Impact,sans-serif;color:#fff;-webkit-text-stroke:.07em #111;paint-order:stroke fill;
+  text-shadow:.06em .07em 0 #111;pointer-events:none;animation:cinQ 1s ease-in-out infinite alternate}
+@keyframes cinQ{from{transform:rotate(-12deg) scale(.9)}to{transform:rotate(10deg) scale(1.08)}}
 
-/* Top 3 shields */
+/* Top 3 badges */
 .cin-shields{display:flex;gap:5vw;align-items:flex-end;justify-content:center}
-.cin-shield{position:relative;width:var(--s);height:calc(var(--s) * 1.18);
-  clip-path:polygon(50% 0,100% 16%,100% 60%,50% 100%,0 60%,0 16%);background:linear-gradient(160deg,#fff,#8e9ab0 40%,#2a313d 50%,#c8d1df 62%,#6b778c);
-  animation:cinSlam .9s cubic-bezier(.2,1.3,.4,1) both}
-.cin-shield.gold{background:linear-gradient(160deg,#fff6d0,#e0a92e 40%,#4a2c00 50%,#ffe08a 62%,#a8730c)}
-.cin-shield.bronze{background:linear-gradient(160deg,#ffe6d2,#c9773f 40%,#3e1a05 50%,#f0b182 62%,#8f4a1d)}
-.cin-shield .in{position:absolute;inset:4%;clip-path:inherit;background:radial-gradient(circle at 50% 30%,#1b2640,#04070e 75%);
-  display:flex;align-items:center;justify-content:center}
+.cin-shield{position:relative;width:var(--s);height:calc(var(--s) * 1.18);clip-path:polygon(50% 0,100% 16%,100% 60%,50% 100%,0 60%,0 16%);
+  background:#111;animation:cinPop .6s cubic-bezier(.2,1.6,.4,1) both}
+.cin-shield .in{position:absolute;inset:7%;clip-path:polygon(50% 0,100% 16%,100% 60%,50% 100%,0 60%,0 16%);background:#fff;
+  display:flex;align-items:center;justify-content:center;
+  background-image:radial-gradient(circle,rgba(0,0,0,.14) 30%,transparent 33%);background-size:1.2vmin 1.2vmin}
+.cin-shield.gold .in{background-color:#FFD400}
+.cin-shield.bronze .in{background-color:#FF7A1A}
 .cin-shield.off{visibility:hidden;animation:none}
 
-/* Project photo frame */
-.cin-proj{position:relative;flex:none;width:var(--pw);aspect-ratio:16/10;border-radius:.4vw;overflow:hidden;background:#05080f;
-  box-shadow:0 0 0 2px var(--medal),0 0 0 .35vw rgba(0,0,0,.7),0 0 6vh var(--medal),0 4vh 8vh rgba(0,0,0,.9);
-  animation:cinProj 1.3s cubic-bezier(.16,1,.3,1) both}
-.cin-proj img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;animation:cinKen 20s linear both}
-.cin-proj:after{content:'';position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.5) 48%,transparent 62%);
-  transform:translateX(-120%);animation:cinGlint 1.6s .6s ease-out forwards}
-.cin-proj .cap{position:absolute;left:0;right:0;bottom:0;padding:1.2vh .8vw .9vh;font:500 calc(var(--pw) * .032)/1.2 'Oswald',sans-serif;
-  letter-spacing:.25em;text-transform:uppercase;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.85))}
-@keyframes cinProj{0%{transform:perspective(1100px) rotateY(-40deg) translateX(-7vw) scale(.88);filter:blur(14px) brightness(2.6);opacity:0}
-  100%{transform:none;filter:none;opacity:1}}
-.cin-proj.right{animation-name:cinProjR}
-@keyframes cinProjR{0%{transform:perspective(1100px) rotateY(40deg) translateX(7vw) scale(.88);filter:blur(14px) brightness(2.6);opacity:0}
-  100%{transform:none;filter:none;opacity:1}}
+/* Teammate cards */
+.cin-heroes{display:flex;justify-content:center;align-items:flex-end;gap:1.8vw}
+.cin-hero{position:relative;width:var(--w);height:calc(var(--w) * 1.3);background:#fff;border:.45vh solid #111;box-shadow:.8vh .8vh 0 #111;
+  overflow:hidden;transform:rotate(var(--tilt,0deg));animation:cinHero .7s cubic-bezier(.2,1.4,.4,1) both}
+.cin-hero.ghost{visibility:hidden;animation:none}
+@keyframes cinHero{0%{transform:translateY(9vh) rotate(-16deg) scale(.4);opacity:0}65%{transform:rotate(var(--tilt,0deg)) scale(1.08);opacity:1}
+  100%{transform:rotate(var(--tilt,0deg))}}
+.cin-hero img{position:absolute;left:0;top:0;width:100%;height:78%;object-fit:cover;object-position:50% 22%}
+.cin-hero .ini{position:absolute;left:0;top:0;width:100%;height:78%;display:flex;align-items:center;justify-content:center;
+  font-size:calc(var(--w) * .36);background-color:var(--team);
+  background-image:radial-gradient(circle,rgba(0,0,0,.22) 30%,transparent 33%);background-size:1.1vmin 1.1vmin}
+.cin-hero .nm{position:absolute;left:0;right:0;bottom:0;height:22%;border-top:.45vh solid #111;background:#FFD400;color:#111;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;overflow:hidden;
+  font-family:'Bangers_400Regular','Bangers',Impact,sans-serif;font-size:calc(var(--w) * .1);letter-spacing:.05em;line-height:1;padding:0 .4vw}
+.cin-hero .rl{display:block;font-family:'SpaceGrotesk_700Bold','Space Grotesk',sans-serif;font-size:.5em;letter-spacing:.14em;text-transform:uppercase;margin-top:.15em}
+.cin-hero:after{content:'';position:absolute;inset:0;background:linear-gradient(115deg,transparent 35%,rgba(255,255,255,.7) 48%,transparent 60%);
+  transform:translateX(-130%);animation:cinGlint 1s .3s ease-out forwards}
+@keyframes cinGlint{to{transform:translateX(130%)}}
 
-.cin-op{position:absolute;left:0;right:0;bottom:1.6vh;text-align:center;font:500 12px/1 'Oswald',sans-serif;letter-spacing:.2em;
-  text-transform:uppercase;color:#fff;opacity:.28;z-index:40}
+/* Project photo as a comic panel */
+.cin-proj{position:relative;flex:none;width:var(--pw);aspect-ratio:16/10;overflow:hidden;background:#fff;border:.6vh solid #111;
+  box-shadow:1.2vh 1.2vh 0 #111;transform:rotate(var(--rot,-2deg));animation:cinProj .8s cubic-bezier(.2,1.4,.4,1) both}
+.cin-proj img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;animation:cinKen 20s linear both}
+@keyframes cinKen{from{transform:scale(1.02)}to{transform:scale(1.14)}}
+.cin-proj:after{content:'';position:absolute;inset:0;background:linear-gradient(115deg,transparent 35%,rgba(255,255,255,.6) 48%,transparent 60%);
+  transform:translateX(-130%);animation:cinGlint 1.2s .5s ease-out forwards}
+@keyframes cinProj{0%{transform:translateX(-30vw) rotate(-24deg) scale(.6);opacity:0}100%{transform:rotate(var(--rot,-2deg));opacity:1}}
+.cin-proj.right{animation-name:cinProjR}
+@keyframes cinProjR{0%{transform:translateX(30vw) rotate(24deg) scale(.6);opacity:0}100%{transform:rotate(var(--rot,-2deg));opacity:1}}
+
+.cin-tpanel{display:flex;flex-direction:column;align-items:center;background:var(--team);border:.6vh solid #111;box-shadow:1.2vh 1.2vh 0 #111;
+  padding:2.2vh 1.2vw 2.6vh;transform:rotate(var(--tilt,0deg));
+  background-image:radial-gradient(circle,rgba(0,0,0,.16) 30%,transparent 33%);background-size:1.4vmin 1.4vmin}
+.cin-op{position:absolute;left:0;right:0;bottom:3.4vh;text-align:center;font:700 12px/1 'SpaceGrotesk_700Bold','Space Grotesk',sans-serif;
+  letter-spacing:.2em;text-transform:uppercase;color:#fff;opacity:.55;z-index:40;text-shadow:0 1px 2px #000}
 .cin-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;z-index:10}
 `;
 
-export const CINEMA_FONTS = 'https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Oswald:wght@300;400;500;700&display=swap';
+/** Fallback web fonts (the app already loads them, but the reveal must look right on its own). */
+export const CINEMA_FONTS = 'https://fonts.googleapis.com/css2?family=Bangers&family=Space+Grotesk:wght@500;700&display=swap';
