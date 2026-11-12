@@ -1,5 +1,6 @@
+import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '@/api/client';
@@ -27,6 +28,17 @@ export default function AdminResultsScreen() {
       <View style={styles.flex}>
         <ResultsView key={viewKey} />
       </View>
+      {Platform.OS === 'web' ? (
+        <View style={styles.showBar}>
+          <Button
+            title="Big screen reveal with music"
+            icon="musical-notes"
+            variant="secondary"
+            fullWidth={false}
+            onPress={() => router.push('/admin/reveal')}
+          />
+        </View>
+      ) : null}
       {!data && error ? (
         <PublishBarShell>
           <Banner type="error" message={`Could not load judging status: ${error.message}`} action={{ label: 'Retry', onPress: () => void reload() }} />
@@ -147,6 +159,7 @@ function PublishBar({
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
+  showBar: { alignItems: 'center', paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.bgElevated },
   bar: {
     borderTopWidth: 1,
     borderTopColor: colors.border,
